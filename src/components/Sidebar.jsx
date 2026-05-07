@@ -1,4 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+
+const MIN_WIDTH = 160
+const MAX_WIDTH = 480
+const STORAGE_KEY = 'qnote-sidebar-width'
+const DEFAULT_WIDTH = 230
 
 function buildTree(files) {
   const root = []
@@ -55,11 +60,53 @@ export default function Sidebar({
   const [showNewInput, setShowNewInput] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [expanded, setExpanded] = useState(new Set())
+  const [width, setWidth] = useState(() => {
+    const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10)
+    return saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH
+  })
   const inputRef = useRef(null)
+  const isResizing = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
 
   useEffect(() => {
     if (showNewInput) inputRef.current?.focus()
   }, [showNewInput])
+
+  const onMouseMove = useCallback((e) => {
+    if (!isResizing.current) return
+    const delta = e.clientX - startX.current
+    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
+    setWidth(next)
+  }, [])
+
+  const onMouseUp = useCallback(() => {
+    if (!isResizing.current) return
+    isResizing.current = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setWidth(prev => {
+      localStorage.setItem(STORAGE_KEY, String(prev))
+      return prev
+    })
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [onMouseMove, onMouseUp])
+
+  function startResize(e) {
+    isResizing.current = true
+    startX.current = e.clientX
+    startWidth.current = width
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   function toggleFolder(key) {
     setExpanded(prev => {
@@ -91,7 +138,7 @@ export default function Sidebar({
 
   function renderTree(nodes, depth = 0) {
     return nodes.map(node => {
-      const indent = 8 + depth * 14
+      const indent = 8 + depth * 18
 
       if (node.type === 'folder') {
         const isOpen = expanded.has(node.key)
@@ -118,6 +165,7 @@ export default function Sidebar({
           style={{ paddingLeft: `${indent}px` }}
           onClick={() => onFileSelect(node)}
         >
+          <span className="file-icon">📄</span>
           <span className="file-label">{node.name.replace(/\.md$/, '')}</span>
           <button
             className="file-del"
@@ -134,7 +182,7 @@ export default function Sidebar({
   const tree = buildTree(files)
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width, minWidth: width }}>
       <div className="sidebar-header">
         <span className="brand">QNote</span>
         <button
@@ -173,6 +221,8 @@ export default function Sidebar({
         )}
         {renderTree(tree)}
       </div>
+
+      <div className="sidebar-resize-handle" onMouseDown={startResize} />
 
       <div className="sidebar-footer">
         <button className="btn-icon" onClick={onSettingsOpen} title="Settings">

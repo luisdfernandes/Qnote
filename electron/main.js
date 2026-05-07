@@ -19,6 +19,23 @@ function saveConfig(data) {
   fs.writeFileSync(configPath, JSON.stringify(data, null, 2))
 }
 
+// ── Local cache ──────────────────────────────────────────────────────────────
+const cachePath = path.join(app.getPath('userData'), 'cache.json')
+
+function getCache() {
+  try {
+    return JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+  } catch {
+    return { files: [], contents: {} }
+  }
+}
+
+function saveCache(data) {
+  try {
+    fs.writeFileSync(cachePath, JSON.stringify(data))
+  } catch { /* non-fatal */ }
+}
+
 // ── GitHub API (fetch is built-in in Node 18+ / Electron 28+) ───────────────
 async function ghRequest(method, endpoint, body, token) {
   const res = await fetch(`https://api.github.com${endpoint}`, {
@@ -106,37 +123,64 @@ ipcMain.handle('github:listFiles', async () => {
   const folderPath = (folder || '').replace(/^\/|\/$/g, '')
   const prefix = folderPath ? `${folderPath}/` : ''
 
-  const branchData = await ghRequest('GET', `/repos/${owner}/${repo}/branches/${branch}`, null, token)
-  const treeSha = branchData.commit.commit.tree.sha
-  const treeData = await ghRequest(
-    'GET',
-    `/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`,
-    null,
-    token,
-  )
+  try {
+    const branchData = await ghRequest('GET', `/repos/${owner}/${repo}/branches/${branch}`, null, token)
+    const treeSha = branchData.commit.commit.tree.sha
+    const treeData = await ghRequest(
+      'GET',
+      `/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`,
+      null,
+      token,
+    )
 
-  return (treeData.tree || [])
-    .filter(f => f.type === 'blob' && f.path.startsWith(prefix) && f.path.endsWith('.md'))
-    .map(f => ({
-      name: path.basename(f.path),
-      path: f.path,
-      sha: f.sha,
-      relativePath: f.path.slice(prefix.length),
-    }))
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+    const files = (treeData.tree || [])
+      .filter(f => f.type === 'blob' && f.path.startsWith(prefix) && f.path.endsWith('.md'))
+      .map(f => ({
+        name: path.basename(f.path),
+        path: f.path,
+        sha: f.sha,
+        relativePath: f.path.slice(prefix.length),
+      }))
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+
+    const cache = getCache()
+    cache.files = files
+    saveCache(cache)
+
+    return { files, fromCache: false }
+  } catch (err) {
+    const cache = getCache()
+    if (cache.files?.length) return { files: cache.files, fromCache: true }
+    throw err
+  }
 })
 
 ipcMain.handle('github:getFile', async (_, filePath) => {
   const { owner, repo, branch, token } = getConfig()
-  const data = await ghRequest(
-    'GET',
-    `/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
-    null,
-    token,
-  )
-  return {
-    content: Buffer.from(data.content, 'base64').toString('utf8'),
-    sha: data.sha,
+
+  try {
+    const data = await ghRequest(
+      'GET',
+      `/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+      null,
+      token,
+    )
+    const result = {
+      content: Buffer.from(data.content, 'base64').toString('utf8'),
+      sha: data.sha,
+    }
+
+    const cache = getCache()
+    cache.contents = cache.contents || {}
+    cache.contents[filePath] = result
+    saveCache(cache)
+
+    return { ...result, fromCache: false }
+  } catch (err) {
+    const cache = getCache()
+    const cached = cache.contents?.[filePath]
+    if (cached) return { ...cached, fromCache: true }
+    throw err
   }
 })
 

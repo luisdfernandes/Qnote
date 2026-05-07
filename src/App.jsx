@@ -33,6 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [status, setStatus] = useState('')
+  const [offline, setOffline] = useState(false)
 
   const isDirty = content !== savedContent
 
@@ -53,7 +54,9 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      setFiles(await window.api.github.listFiles())
+      const { files, fromCache } = await window.api.github.listFiles()
+      setFiles(files)
+      setOffline(fromCache)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -65,10 +68,11 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const { content: text, sha } = await window.api.github.getFile(file.path)
+      const { content: text, sha, fromCache } = await window.api.github.getFile(file.path)
       setActiveFile({ ...file, sha })
       setContent(text)
       setSavedContent(text)
+      if (fromCache) setOffline(true)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -189,6 +193,12 @@ export default function App() {
           onSave={saveFile}
           onRefresh={loadFiles}
         />
+
+        {offline && (
+          <div className="offline-banner">
+            Offline — showing cached notes. Changes cannot be saved until reconnected.
+          </div>
+        )}
 
         {error && (
           <div className="error-banner" onClick={() => setError(null)}>
