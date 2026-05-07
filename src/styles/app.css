@@ -208,6 +208,39 @@ body { user-select: none; }
 .file-item:hover .file-del { opacity: 1; }
 .file-del:hover { color: var(--danger); }
 
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px 5px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.folder-item:hover { background: var(--bg-hover); color: var(--text); }
+
+.folder-arrow {
+  font-size: 10px;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.folder-icon { font-size: 12px; flex-shrink: 0; }
+
+.folder-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .new-file-form { padding: 4px 8px; }
 
 .new-file-form input {
@@ -482,7 +515,27 @@ body { user-select: none; }
   overflow-x: auto;
   margin: 1.2em 0;
   font-size: 13px;
+  position: relative;
 }
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(127,127,127,0.2);
+  border: 1px solid rgba(127,127,127,0.3);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  padding: 3px 8px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.markdown-body pre:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { background: rgba(127,127,127,0.35); color: var(--text); }
 
 .markdown-body pre .hljs {
   border-radius: 6px;

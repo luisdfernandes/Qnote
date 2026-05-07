@@ -116,7 +116,7 @@ export default function App() {
         content: `# ${title}\n\n`,
         sha: null,
       })
-      const newFile = { name: fileName, path: filePath, sha }
+      const newFile = { name: fileName, path: filePath, sha, relativePath: fileName }
       setFiles(prev =>
         [...prev, newFile].sort((a, b) => a.name.localeCompare(b.name)),
       )

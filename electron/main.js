@@ -104,16 +104,26 @@ ipcMain.handle('github:listFiles', async () => {
   if (!token || !owner || !repo) throw new Error('GitHub is not configured yet.')
 
   const folderPath = (folder || '').replace(/^\/|\/$/g, '')
-  const endpoint = folderPath
-    ? `/repos/${owner}/${repo}/contents/${folderPath}?ref=${branch}`
-    : `/repos/${owner}/${repo}/contents?ref=${branch}`
+  const prefix = folderPath ? `${folderPath}/` : ''
 
-  const data = await ghRequest('GET', endpoint, null, token)
+  const branchData = await ghRequest('GET', `/repos/${owner}/${repo}/branches/${branch}`, null, token)
+  const treeSha = branchData.commit.commit.tree.sha
+  const treeData = await ghRequest(
+    'GET',
+    `/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`,
+    null,
+    token,
+  )
 
-  return (Array.isArray(data) ? data : [])
-    .filter(f => f.type === 'file' && f.name.endsWith('.md'))
-    .map(f => ({ name: f.name, path: f.path, sha: f.sha }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  return (treeData.tree || [])
+    .filter(f => f.type === 'blob' && f.path.startsWith(prefix) && f.path.endsWith('.md'))
+    .map(f => ({
+      name: path.basename(f.path),
+      path: f.path,
+      sha: f.sha,
+      relativePath: f.path.slice(prefix.length),
+    }))
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 })
 
 ipcMain.handle('github:getFile', async (_, filePath) => {

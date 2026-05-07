@@ -14,11 +14,25 @@ export default function Editor({ content, onChange, mode, activeFile }) {
     if (mode === 'edit') textareaRef.current?.focus()
   }, [mode, activeFile?.path])
 
-  // Highlight all code blocks after preview renders
+  // Highlight all code blocks and add copy buttons after preview renders
   useEffect(() => {
     if (mode !== 'view' || !previewRef.current) return
     previewRef.current.querySelectorAll('pre code').forEach(el => {
       hljs.highlightElement(el)
+
+      const pre = el.parentElement
+      if (pre.querySelector('.copy-btn')) return
+
+      const btn = document.createElement('button')
+      btn.className = 'copy-btn'
+      btn.textContent = 'Copy'
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(el.innerText).then(() => {
+          btn.textContent = 'Copied!'
+          setTimeout(() => { btn.textContent = 'Copy' }, 2000)
+        })
+      })
+      pre.appendChild(btn)
     })
   }, [mode, content])
 

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Dev Projects\\\\Qnote\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(tree \"C:\\\\Dev Projects\\\\Qnote\" -L 3 -I \"node_modules\")"
+    ]
+  }
+}
