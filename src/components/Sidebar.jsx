@@ -229,7 +229,7 @@ export default function Sidebar({
 
   function renderTree(nodes, depth = 0) {
     return nodes.map(node => {
-      const indent = 8 + depth * 18
+      const indent = 8 + depth * 26
 
       if (node.type === 'folder') {
         const isOpen = expanded.has(node.key)

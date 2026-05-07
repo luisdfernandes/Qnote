@@ -112,22 +112,52 @@
   --scroll-thumb-hover: rgba(0,0,0,0.35);
 }
 
-/* light theme: override hljs to a light palette */
-[data-theme="light"] .hljs {
-  background: #f6f8fa !important;
-  color: #24292e !important;
-}
+/* ── Syntax highlighting — shared by editor and preview ─────────────────── */
+/* dark theme (default) */
+.hljs-comment,
+.hljs-quote      { color: #7c848d; font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-deletion   { color: #c678dd; }
+.hljs-string,
+.hljs-attr,
+.hljs-addition   { color: #98c379; }
+.hljs-number,
+.hljs-literal    { color: #d19a66; }
+.hljs-title,
+.hljs-name,
+.hljs-section    { color: #61afef; }
+.hljs-type,
+.hljs-built_in   { color: #e5c07b; }
+.hljs-variable,
+.hljs-template-variable { color: #e06c75; }
+.hljs-tag        { color: #e06c75; }
+.hljs-punctuation,
+.hljs-operator   { color: #56b6c2; }
+.hljs-meta       { color: #61afef; }
+
+/* light theme */
+[data-theme="light"] .hljs         { background: #f6f8fa; color: #24292e; }
 [data-theme="light"] .hljs-comment,
-[data-theme="light"] .hljs-quote       { color: #6a737d !important; }
+[data-theme="light"] .hljs-quote   { color: #6a737d; }
 [data-theme="light"] .hljs-keyword,
-[data-theme="light"] .hljs-selector-tag { color: #d73a49 !important; }
+[data-theme="light"] .hljs-selector-tag,
+[data-theme="light"] .hljs-deletion { color: #d73a49; }
 [data-theme="light"] .hljs-string,
-[data-theme="light"] .hljs-attr        { color: #032f62 !important; }
+[data-theme="light"] .hljs-attr,
+[data-theme="light"] .hljs-addition { color: #22863a; }
 [data-theme="light"] .hljs-number,
-[data-theme="light"] .hljs-literal     { color: #005cc5 !important; }
+[data-theme="light"] .hljs-literal  { color: #005cc5; }
 [data-theme="light"] .hljs-title,
-[data-theme="light"] .hljs-name        { color: #6f42c1 !important; }
-[data-theme="light"] .hljs-built_in    { color: #e36209 !important; }
+[data-theme="light"] .hljs-name,
+[data-theme="light"] .hljs-section  { color: #6f42c1; }
+[data-theme="light"] .hljs-type,
+[data-theme="light"] .hljs-built_in { color: #e36209; }
+[data-theme="light"] .hljs-variable,
+[data-theme="light"] .hljs-template-variable { color: #d73a49; }
+[data-theme="light"] .hljs-tag     { color: #22863a; }
+[data-theme="light"] .hljs-operator { color: #032f62; }
+[data-theme="light"] .hljs-meta    { color: #6f42c1; }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
 html, body, #root {
@@ -632,13 +662,17 @@ body { user-select: none; }
   background: rgba(0,0,0,0.05);
 }
 
-/* Code blocks — hljs handles colour; we style the wrapper */
+/* Code blocks in preview */
 .markdown-body pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: 6px;
   overflow-x: auto;
   margin: 1.2em 0;
   font-size: 13px;
   position: relative;
+  padding: 20px 24px;
 }
 
 .copy-btn {
@@ -661,11 +695,12 @@ body { user-select: none; }
 .copy-btn:hover { background: rgba(127,127,127,0.35); color: var(--text); }
 
 .markdown-body pre .hljs {
-  border-radius: 6px;
-  padding: 16px 20px;
+  background: transparent;
+  padding: 0;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
+  color: var(--text);
 }
 
 .markdown-body blockquote {
@@ -947,6 +982,21 @@ body { user-select: none; }
   flex-shrink: 0;
 }
 
+.fmt-lang-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.fmt-lang-select:hover { border-color: var(--accent); }
+.fmt-lang-select:focus { border-color: var(--focus); }
+
 /* ── TipTap WYSIWYG editor ───────────────────────────────────────────────── */
 .tiptap-editor {
   flex: 1;
@@ -1025,7 +1075,7 @@ body { user-select: none; }
 .tiptap-editor pre {
   background: var(--bg-code);
   border-radius: 6px;
-  padding: 16px 20px;
+  padding: 20px 24px;
   overflow-x: auto;
   margin: 1.2em 0;
   border: 1px solid var(--border);
@@ -1040,6 +1090,7 @@ body { user-select: none; }
   padding: 0;
   color: var(--text);
 }
+
 
 .tiptap-editor blockquote {
   border-left: 3px solid var(--accent);

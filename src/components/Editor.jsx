@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { createLowlight, common } from 'lowlight'
 import { Markdown } from 'tiptap-markdown'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
@@ -9,9 +11,41 @@ import Link from '@tiptap/extension-link'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
-import 'highlight.js/styles/atom-one-dark.css'
+
+const lowlight = createLowlight(common)
 
 marked.use({ gfm: true, breaks: true })
+
+const LANGUAGES = [
+  { value: '',           label: 'Plain text' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'jsx',        label: 'JSX' },
+  { value: 'tsx',        label: 'TSX' },
+  { value: 'python',     label: 'Python' },
+  { value: 'java',       label: 'Java' },
+  { value: 'c',          label: 'C' },
+  { value: 'cpp',        label: 'C++' },
+  { value: 'csharp',     label: 'C#' },
+  { value: 'go',         label: 'Go' },
+  { value: 'rust',       label: 'Rust' },
+  { value: 'ruby',       label: 'Ruby' },
+  { value: 'php',        label: 'PHP' },
+  { value: 'swift',      label: 'Swift' },
+  { value: 'kotlin',     label: 'Kotlin' },
+  { value: 'bash',       label: 'Bash / Shell' },
+  { value: 'powershell', label: 'PowerShell' },
+  { value: 'sql',        label: 'SQL' },
+  { value: 'html',       label: 'HTML' },
+  { value: 'css',        label: 'CSS' },
+  { value: 'json',       label: 'JSON' },
+  { value: 'yaml',       label: 'YAML' },
+  { value: 'toml',       label: 'TOML' },
+  { value: 'xml',        label: 'XML' },
+  { value: 'markdown',   label: 'Markdown' },
+  { value: 'diff',       label: 'Diff' },
+  { value: 'dockerfile', label: 'Dockerfile' },
+]
 
 function ToolBtn({ title, active, disabled, onClick, children }) {
   return (
@@ -29,36 +63,75 @@ function Sep() {
 }
 
 function FormatBar({ editor }) {
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      bold:         e.isActive('bold'),
+      italic:       e.isActive('italic'),
+      strike:       e.isActive('strike'),
+      code:         e.isActive('code'),
+      h1:           e.isActive('heading', { level: 1 }),
+      h2:           e.isActive('heading', { level: 2 }),
+      h3:           e.isActive('heading', { level: 3 }),
+      bulletList:   e.isActive('bulletList'),
+      orderedList:  e.isActive('orderedList'),
+      taskList:     e.isActive('taskList'),
+      blockquote:   e.isActive('blockquote'),
+      codeBlock:    e.isActive('codeBlock'),
+      table:        e.isActive('table'),
+      codeBlockLang: e.getAttributes('codeBlock').language || '',
+      canUndo:      e.can().undo(),
+      canRedo:      e.can().redo(),
+    }),
+  })
+
   if (!editor) return <div className="format-bar" />
 
   const c = editor.chain().focus()
-  const a = (type, attrs) => editor.isActive(type, attrs)
 
   return (
     <div className="format-bar">
       {/* Text style */}
-      <ToolBtn title="Bold (Ctrl+B)"   active={a('bold')}   onClick={() => c.toggleBold().run()}><strong>B</strong></ToolBtn>
-      <ToolBtn title="Italic (Ctrl+I)" active={a('italic')} onClick={() => c.toggleItalic().run()}><em>I</em></ToolBtn>
-      <ToolBtn title="Strikethrough"   active={a('strike')} onClick={() => c.toggleStrike().run()}><s>S</s></ToolBtn>
-      <ToolBtn title="Inline code"     active={a('code')}   onClick={() => c.toggleCode().run()}>{'`'}</ToolBtn>
+      <ToolBtn title="Bold (Ctrl+B)"   active={state.bold}   onClick={() => c.toggleBold().run()}><strong>B</strong></ToolBtn>
+      <ToolBtn title="Italic (Ctrl+I)" active={state.italic} onClick={() => c.toggleItalic().run()}><em>I</em></ToolBtn>
+      <ToolBtn title="Strikethrough"   active={state.strike} onClick={() => c.toggleStrike().run()}><s>S</s></ToolBtn>
+      <ToolBtn title="Inline code"     active={state.code}   onClick={() => c.toggleCode().run()}>{'`'}</ToolBtn>
       <Sep />
 
       {/* Headings */}
-      <ToolBtn title="Heading 1" active={a('heading', { level: 1 })} onClick={() => c.toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
-      <ToolBtn title="Heading 2" active={a('heading', { level: 2 })} onClick={() => c.toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
-      <ToolBtn title="Heading 3" active={a('heading', { level: 3 })} onClick={() => c.toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
+      <ToolBtn title="Heading 1" active={state.h1} onClick={() => c.toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
+      <ToolBtn title="Heading 2" active={state.h2} onClick={() => c.toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
+      <ToolBtn title="Heading 3" active={state.h3} onClick={() => c.toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
       <Sep />
 
       {/* Blocks */}
-      <ToolBtn title="Bullet list"   active={a('bulletList')}   onClick={() => c.toggleBulletList().run()}>≡</ToolBtn>
-      <ToolBtn title="Ordered list"  active={a('orderedList')}  onClick={() => c.toggleOrderedList().run()}>№</ToolBtn>
-      <ToolBtn title="Task list"     active={a('taskList')}     onClick={() => c.toggleTaskList().run()}>☑</ToolBtn>
-      <ToolBtn title="Blockquote"    active={a('blockquote')}   onClick={() => c.toggleBlockquote().run()}>"</ToolBtn>
-      <ToolBtn title="Code block"    active={a('codeBlock')}    onClick={() => c.toggleCodeBlock().run()}>{'</>'}</ToolBtn>
+      <ToolBtn title="Bullet list"   active={state.bulletList}  onClick={() => c.toggleBulletList().run()}>≡</ToolBtn>
+      <ToolBtn title="Ordered list"  active={state.orderedList} onClick={() => c.toggleOrderedList().run()}>№</ToolBtn>
+      <ToolBtn title="Task list"     active={state.taskList}    onClick={() => c.toggleTaskList().run()}>☑</ToolBtn>
+      <ToolBtn title="Blockquote"    active={state.blockquote}  onClick={() => c.toggleBlockquote().run()}>"</ToolBtn>
+      <ToolBtn title="Code block"    active={state.codeBlock}   onClick={() => c.toggleCodeBlock().run()}>{'</>'}</ToolBtn>
+
+      {state.codeBlock && (
+        <>
+          <Sep />
+          <select
+            className="fmt-lang-select"
+            value={state.codeBlockLang}
+            onChange={e => {
+              editor.chain().focus().updateAttributes('codeBlock', { language: e.target.value || null }).run()
+            }}
+            onMouseDown={e => e.stopPropagation()}
+          >
+            {LANGUAGES.map(l => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+        </>
+      )}
       <Sep />
 
       {/* Table */}
-      {!a('table') ? (
+      {!state.table ? (
         <ToolBtn title="Insert table" active={false} onClick={() => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>⊞</ToolBtn>
       ) : (
         <>
@@ -73,8 +146,8 @@ function FormatBar({ editor }) {
 
       {/* Misc */}
       <ToolBtn title="Horizontal rule" active={false} onClick={() => c.setHorizontalRule().run()}>—</ToolBtn>
-      <ToolBtn title="Undo (Ctrl+Z)"   active={false} disabled={!editor.can().undo()} onClick={() => c.undo().run()}>↩</ToolBtn>
-      <ToolBtn title="Redo (Ctrl+Y)"   active={false} disabled={!editor.can().redo()} onClick={() => c.redo().run()}>↪</ToolBtn>
+      <ToolBtn title="Undo (Ctrl+Z)"   active={false} disabled={!state.canUndo} onClick={() => c.undo().run()}>↩</ToolBtn>
+      <ToolBtn title="Redo (Ctrl+Y)"   active={false} disabled={!state.canRedo} onClick={() => c.redo().run()}>↪</ToolBtn>
     </div>
   )
 }
@@ -84,7 +157,8 @@ function TiptapEditor({ content, onChange }) {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight }),
       Markdown.configure({ html: false, transformPastedText: true }),
       Placeholder.configure({ placeholder: 'Start writing…' }),
       TaskList,
