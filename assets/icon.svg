@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#252526"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4ec9b0"/>
+      <stop offset="100%" stop-color="#3aab96"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded background -->
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow border -->
+  <rect width="256" height="256" rx="52" fill="none" stroke="#4ec9b0" stroke-width="2" opacity="0.15"/>
+
+  <!-- Q: outer circle -->
+  <circle cx="122" cy="114" r="66" fill="none" stroke="url(#stroke)" stroke-width="22" stroke-linecap="round"/>
+
+  <!-- Q: tail (bottom-right diagonal) -->
+  <line x1="160" y1="152" x2="200" y2="200" stroke="url(#stroke)" stroke-width="22" stroke-linecap="round"/>
+</svg>

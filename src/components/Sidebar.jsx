@@ -80,6 +80,7 @@ export default function Sidebar({
 }) {
   const [newFileName, setNewFileName] = useState('')
   const [showNewInput, setShowNewInput] = useState(false)
+  const [activeFolder, setActiveFolder] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [searchMode, setSearchMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -123,6 +124,12 @@ export default function Sidebar({
   useEffect(() => {
     if (searchMode) searchRef.current?.focus()
   }, [searchMode])
+
+  useEffect(() => {
+    if (!activeFile) return
+    const keys = parentFolderKeys(activeFile.relativePath)
+    setActiveFolder(keys.length ? keys[keys.length - 1] : '')
+  }, [activeFile?.path])
 
   useEffect(() => {
     if (!activeFile || searchMode) return
@@ -200,6 +207,7 @@ export default function Sidebar({
   }
 
   function toggleFolder(key) {
+    setActiveFolder(key)
     setExpanded(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
@@ -212,7 +220,7 @@ export default function Sidebar({
     e.preventDefault()
     const name = newFileName.trim()
     if (!name) return
-    onFileCreate(name)
+    onFileCreate(name, activeFolder)
     setNewFileName('')
     setShowNewInput(false)
   }
@@ -330,7 +338,7 @@ export default function Sidebar({
           <input
             ref={inputRef}
             type="text"
-            placeholder="filename.md"
+            placeholder={activeFolder ? `${activeFolder}/filename.md` : 'filename.md'}
             value={newFileName}
             onChange={e => setNewFileName(e.target.value)}
             onKeyDown={e => {

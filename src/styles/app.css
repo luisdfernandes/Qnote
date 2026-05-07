@@ -506,6 +506,9 @@ body { user-select: none; }
   transition: color 0.1s, background 0.1s;
 }
 .btn-icon:hover { color: var(--text); background: var(--bg-hover); }
+.btn-icon.is-active { color: var(--accent); background: var(--bg-active); }
+
+.toolbar-mode-btn { font-size: 0; } /* prevent any residual text gap */
 
 .btn-icon-label {
   background: none;
@@ -553,11 +556,11 @@ body { user-select: none; }
 .empty-state { text-align: center; color: var(--text-muted); }
 
 .empty-logo {
-  font-size: 56px;
-  font-weight: 800;
-  color: var(--border);
+  width: 96px;
+  height: 96px;
+  opacity: 0.5;
   margin-bottom: 12px;
-  letter-spacing: -2px;
+  margin-bottom: 4px;
 }
 
 .empty-state p { font-size: 13px; }

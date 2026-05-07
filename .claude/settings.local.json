@@ -21,7 +21,8 @@
       "Bash(node -e \"const pkg=require\\('./node_modules/tiptap-markdown/package.json'\\); console.log\\('main:',pkg.main,'module:',pkg.module,'exports:',JSON.stringify\\(pkg.exports\\)\\)\")",
       "Bash(node -e \"const pkg=require\\('./node_modules/tiptap-markdown/package.json'\\); console.log\\(JSON.stringify\\(pkg.peerDependencies, null, 2\\)\\)\")",
       "Bash(node -e ' *)",
-      "Bash(node -e \"const r = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(r\\).filter\\(k => k.toLowerCase\\(\\).includes\\('state'\\) || k.toLowerCase\\(\\).includes\\('current'\\)\\)\\)\")"
+      "Bash(node -e \"const r = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(r\\).filter\\(k => k.toLowerCase\\(\\).includes\\('state'\\) || k.toLowerCase\\(\\).includes\\('current'\\)\\)\\)\")",
+      "Bash(node scripts/generate-icon.js)"
     ]
   }
 }

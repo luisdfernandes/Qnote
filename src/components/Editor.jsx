@@ -11,6 +11,7 @@ import Link from '@tiptap/extension-link'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
+import iconSvg from '../../assets/icon.svg'
 
 const lowlight = createLowlight(common)
 
@@ -223,7 +224,7 @@ export default function Editor({ content, onChange, mode, activeFile }) {
     return (
       <div className="editor-empty">
         <div className="empty-state">
-          <div className="empty-logo">Q</div>
+          <img src={iconSvg} className="empty-logo" alt="Qnote" />
           <p>Select a note from the sidebar or create a new one</p>
         </div>
       </div>

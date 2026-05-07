@@ -106,10 +106,12 @@ export default function App() {
     }
   }, [activeFile, content, isDirty])
 
-  async function createFile(name) {
+  async function createFile(name, subFolder = '') {
     const fileName = name.endsWith('.md') ? name : `${name}.md`
     const folderPath = (config.folder || '').replace(/\/$/, '')
-    const filePath = folderPath ? `${folderPath}/${fileName}` : fileName
+    const sub = (subFolder || '').replace(/\/$/, '')
+    const base = [folderPath, sub].filter(Boolean).join('/')
+    const filePath = base ? `${base}/${fileName}` : fileName
     const title = fileName.replace(/\.md$/, '')
 
     setLoading(true)
@@ -120,7 +122,8 @@ export default function App() {
         content: `# ${title}\n\n`,
         sha: null,
       })
-      const newFile = { name: fileName, path: filePath, sha, relativePath: fileName }
+      const relativePath = sub ? `${sub}/${fileName}` : fileName
+      const newFile = { name: fileName, path: filePath, sha, relativePath }
       setFiles(prev =>
         [...prev, newFile].sort((a, b) => a.name.localeCompare(b.name)),
       )
