@@ -19,6 +19,26 @@ function saveConfig(data) {
   fs.writeFileSync(configPath, JSON.stringify(data, null, 2))
 }
 
+// ── Window state ─────────────────────────────────────────────────────────────
+const windowStatePath = path.join(app.getPath('userData'), 'window-state.json')
+
+function getWindowState() {
+  try {
+    return JSON.parse(fs.readFileSync(windowStatePath, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function saveWindowState(win) {
+  try {
+    fs.writeFileSync(windowStatePath, JSON.stringify({
+      fullscreen: win.isFullScreen(),
+      maximized: win.isMaximized(),
+    }))
+  } catch { /* non-fatal */ }
+}
+
 // ── Local cache ──────────────────────────────────────────────────────────────
 const cachePath = path.join(app.getPath('userData'), 'cache.json')
 
@@ -63,6 +83,8 @@ async function ghRequest(method, endpoint, body, token) {
 let mainWindow
 
 function createWindow() {
+  const windowState = getWindowState()
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -75,6 +97,14 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
+
+  if (windowState.fullscreen) {
+    mainWindow.setFullScreen(true)
+  } else if (windowState.maximized) {
+    mainWindow.maximize()
+  }
+
+  mainWindow.on('close', () => saveWindowState(mainWindow))
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
@@ -153,6 +183,39 @@ ipcMain.handle('github:listFiles', async () => {
     if (cache.files?.length) return { files: cache.files, fromCache: true }
     throw err
   }
+})
+
+ipcMain.handle('github:search', async (_, query) => {
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return []
+
+  const cache = getCache()
+  const results = []
+
+  for (const file of (cache.files || [])) {
+    const titleMatch = file.name.toLowerCase().includes(q) ||
+                       file.relativePath.toLowerCase().includes(q)
+    const cached = cache.contents?.[file.path]
+    const contentText = cached?.content || ''
+    const contentLower = contentText.toLowerCase()
+    const contentMatch = contentLower.includes(q)
+
+    if (!titleMatch && !contentMatch) continue
+
+    let snippet = null
+    if (contentMatch) {
+      const idx = contentLower.indexOf(q)
+      const start = Math.max(0, idx - 60)
+      const end = Math.min(contentText.length, idx + q.length + 80)
+      snippet = (start > 0 ? '…' : '') +
+                contentText.slice(start, end).replace(/\n+/g, ' ') +
+                (end < contentText.length ? '…' : '')
+    }
+
+    results.push({ ...file, titleMatch, contentMatch, snippet })
+  }
+
+  return results
 })
 
 ipcMain.handle('github:getFile', async (_, filePath) => {

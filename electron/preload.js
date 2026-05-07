@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   github: {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: () => ipcRenderer.invoke('github:listFiles'),
+    search: (query) => ipcRenderer.invoke('github:search', query),
     getFile: (filePath) => ipcRenderer.invoke('github:getFile', filePath),
     saveFile: (data) => ipcRenderer.invoke('github:saveFile', data),
     deleteFile: (data) => ipcRenderer.invoke('github:deleteFile', data),
