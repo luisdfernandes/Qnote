@@ -3,7 +3,24 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"C:\\\\Dev Projects\\\\Qnote\" -Force)",
       "Bash(Select-Object Name, PSIsContainer)",
-      "PowerShell(tree \"C:\\\\Dev Projects\\\\Qnote\" -L 3 -I \"node_modules\")"
+      "PowerShell(tree \"C:\\\\Dev Projects\\\\Qnote\" -L 3 -I \"node_modules\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Bash(node -e \"const t = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(t\\).filter\\(k => k.toLowerCase\\(\\).includes\\('bubble'\\) || k.toLowerCase\\(\\).includes\\('menu'\\) || k.toLowerCase\\(\\).includes\\('float'\\)\\)\\)\")",
+      "Bash(node -e \"const d=require\\('/dev/stdin'\\);console.log\\('version:',d.version\\)\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@tiptap/react/package.json'\\).version\\)\")",
+      "Bash(node -e \"const t = require\\('./node_modules/@tiptap/react/dist/index.js'\\); console.log\\(Object.keys\\(t\\)\\)\")",
+      "Bash(node -e \"const t = require\\('./node_modules/@tiptap/extension-bubble-menu/dist/index.js'\\); console.log\\(Object.keys\\(t\\)\\)\")",
+      "Bash(node -e \"const t = require\\('./node_modules/@tiptap/react/dist/index.js'\\); const keys = Object.keys\\(t\\); console.log\\(keys.slice\\(100\\)\\)\")",
+      "Bash(set VITE_DEV_SERVER_URL=http://localhost:5200)",
+      "Bash(npx electron *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5173\")",
+      "Bash(node -e \"const m = require\\('./node_modules/tiptap-markdown/dist/index.js'\\); console.log\\(Object.keys\\(m\\).slice\\(0,10\\)\\)\")",
+      "Bash(node -e \"const pkg=require\\('./node_modules/tiptap-markdown/package.json'\\); console.log\\('main:',pkg.main,'module:',pkg.module,'exports:',JSON.stringify\\(pkg.exports\\)\\)\")",
+      "Bash(node -e \"const pkg=require\\('./node_modules/tiptap-markdown/package.json'\\); console.log\\(JSON.stringify\\(pkg.peerDependencies, null, 2\\)\\)\")",
+      "Bash(node -e ' *)"
     ]
   }
 }

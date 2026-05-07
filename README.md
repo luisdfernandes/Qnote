@@ -12,8 +12,17 @@ Connect any GitHub repository (public or private) and point QNote at a folder. E
 ### Tree view sidebar
 Notes are displayed in a collapsible folder tree that mirrors your repo structure. Create subfolders in GitHub and QNote reflects them automatically.
 
-### Markdown editor & preview
-Write in a clean textarea and switch to a rendered preview with syntax-highlighted code blocks. A **Copy** button appears on every code block on hover.
+### WYSIWYG editor
+Write in a hybrid editor — formatting renders live as you type, no raw markdown syntax in sight. Markdown shortcuts work naturally: type `# ` for a heading, `- ` for a bullet, `**word**` for bold. Switch to a rendered **Preview** mode for a read-only view with syntax-highlighted code blocks and **Copy** buttons on hover.
+
+**Formatting toolbar** — a persistent bar above the editor gives one-click access to:
+- Text: bold, italic, strikethrough, inline code
+- Headings: H1, H2, H3
+- Blocks: bullet list, ordered list, task list (checkboxes), blockquote, code block
+- Tables: insert a table, then add/remove columns and rows while your cursor is inside
+- Extras: horizontal rule, undo, redo
+
+**Selection toolbar** — select any text and a floating menu appears instantly with the most common formatting actions.
 
 ### Offline support
 QNote caches your file list and note contents locally. If you lose your connection, you can still read and browse every note you've opened before. A yellow banner lets you know when you're working from cache.
@@ -99,6 +108,7 @@ npm start         # run the built Electron app
 |---|---|
 | Shell | Electron |
 | UI | React 18 + Vite |
-| Markdown | marked + highlight.js |
+| Editor | TipTap (ProseMirror) |
+| Markdown | marked + highlight.js (preview) / tiptap-markdown (editor) |
 | Storage | GitHub Contents & Git Trees API |
 | Styling | Plain CSS with theme tokens |
