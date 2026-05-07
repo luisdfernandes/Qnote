@@ -48,6 +48,17 @@ function buildTree(files) {
   return sort(root)
 }
 
+function parentFolderKeys(relativePath) {
+  const parts = (relativePath || '').split('/')
+  const keys = []
+  let key = ''
+  for (let i = 0; i < parts.length - 1; i++) {
+    key = key ? `${key}/${parts[i]}` : parts[i]
+    keys.push(key)
+  }
+  return keys
+}
+
 function highlight(text, query) {
   if (!query) return text
   const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
@@ -84,6 +95,7 @@ export default function Sidebar({
     () => localStorage.getItem(COLLAPSED_KEY) === 'true',
   )
   const inputRef = useRef(null)
+  const fileListRef = useRef(null)
   const isResizing = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
@@ -93,8 +105,30 @@ export default function Sidebar({
   }, [showNewInput])
 
   useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.key === 'f') {
+        e.preventDefault()
+        openSearch()
+      } else if (e.key === 'n') {
+        e.preventDefault()
+        closeSearch()
+        setShowNewInput(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
     if (searchMode) searchRef.current?.focus()
   }, [searchMode])
+
+  useEffect(() => {
+    if (!activeFile || searchMode) return
+    const el = fileListRef.current?.querySelector('.file-item.active')
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [activeFile?.path, searchMode])
 
   useEffect(() => {
     if (!searchMode || !searchQuery.trim()) {
@@ -309,7 +343,7 @@ export default function Sidebar({
         </form>
       )}
 
-      <div className="file-list">
+      <div className="file-list" ref={fileListRef}>
         {searchMode ? (
           searchQuery.trim() === '' ? (
             <div className="hint">Type to search…</div>
@@ -321,7 +355,18 @@ export default function Sidebar({
             <div
               key={r.path}
               className={`search-result ${activeFile?.path === r.path ? 'active' : ''}`}
-              onClick={() => { onFileSelect(r); closeSearch() }}
+              onClick={() => {
+                onFileSelect(r)
+                const keys = parentFolderKeys(r.relativePath)
+                if (keys.length) {
+                  setExpanded(prev => {
+                    const next = new Set(prev)
+                    keys.forEach(k => next.add(k))
+                    return next
+                  })
+                }
+                closeSearch()
+              }}
             >
               <div className="search-result-title">
                 {highlight(r.name.replace(/\.md$/, ''), searchQuery)}
