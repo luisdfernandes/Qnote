@@ -6,7 +6,46 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build",
-    "start": "electron ."
+    "build:icon": "node scripts/build-icon.js",
+    "start": "electron .",
+    "dist": "npm run build:icon && npm run build && electron-builder",
+    "dist:win": "npm run build:icon && npm run build && electron-builder --win",
+    "dist:mac": "npm run build:icon && npm run build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.luiscdf.qnote",
+    "productName": "Qnote",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.22.5",
@@ -34,6 +73,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^8.2.0",
     "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
     "vite": "^5.3.0",
     "wait-on": "^7.2.0"
   }
