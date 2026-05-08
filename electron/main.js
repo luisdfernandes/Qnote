@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, Menu, clipboard } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -157,6 +157,12 @@ ipcMain.handle('config:get', () => getConfig())
 ipcMain.handle('config:save', (_, cfg) => { saveConfig(cfg); return true })
 ipcMain.handle('zoom:set', (_, factor) => {
   mainWindow.webContents.setZoomFactor(factor)
+})
+
+ipcMain.handle('clipboard:readImage', () => {
+  const img = clipboard.readImage()
+  if (img.isEmpty()) return null
+  return img.toPNG().toString('base64')
 })
 
 // ── IPC: GitHub ──────────────────────────────────────────────────────────────

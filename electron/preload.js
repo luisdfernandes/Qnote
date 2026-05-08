@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('api', {
   zoom: {
     set: (factor) => ipcRenderer.invoke('zoom:set', factor),
   },
+  clipboard: {
+    readImage: () => ipcRenderer.invoke('clipboard:readImage'),
+  },
   github: {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: () => ipcRenderer.invoke('github:listFiles'),

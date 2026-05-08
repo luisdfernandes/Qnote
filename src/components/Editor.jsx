@@ -163,6 +163,23 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
 
   useEffect(() => { uploadRef.current = onImageUpload }, [onImageUpload])
 
+  async function uploadAndInsert(base64, ext) {
+    if (!uploadRef.current || !editorRef.current) return
+    const filename = `pasted-${Date.now()}.${ext}`
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const url = await uploadRef.current(base64, filename)
+      editorRef.current.chain().focus().setImage({ src: url, alt: '' }).run()
+    } catch (err) {
+      console.error('Image upload error:', err)
+      setUploadError(`Upload failed: ${err.message}`)
+      setTimeout(() => setUploadError(null), 6000)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
@@ -181,34 +198,48 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
     content: '',
     editorProps: {
       handlePaste(view, event) {
-        const items = Array.from(event.clipboardData?.items || [])
-        const imageItem = items.find(item => item.type.startsWith('image/') && item.kind === 'file')
-        if (!imageItem || !uploadRef.current) return false
+        if (!uploadRef.current) return false
 
-        const file = imageItem.getAsFile()
-        if (!file) return false
+        const cd = event.clipboardData
+        const items = Array.from(cd?.items || [])
+        const files = Array.from(cd?.files || [])
+        const hasText = !!(cd?.getData?.('text/plain'))
 
-        const reader = new FileReader()
-        reader.onload = async () => {
-          const base64 = reader.result.split(',')[1]
-          const ext = imageItem.type === 'image/jpeg' ? 'jpg' : (imageItem.type.split('/')[1] || 'png')
-          const filename = `pasted-${Date.now()}.${ext}`
-
-          setUploading(true)
-          setUploadError(null)
-          try {
-            const url = await uploadRef.current(base64, filename)
-            editorRef.current?.chain().focus().setImage({ src: url, alt: '' }).run()
-          } catch (err) {
-            console.error('Image upload error:', err)
-            setUploadError(`Upload failed: ${err.message}`)
-            setTimeout(() => setUploadError(null), 6000)
-          } finally {
-            setUploading(false)
-          }
+        // 1. Prefer DataTransfer image (works for most apps)
+        let blob = null
+        let mime = null
+        const imageItem = items.find(i => i.type?.startsWith('image/'))
+        if (imageItem) {
+          blob = imageItem.getAsFile()
+          mime = imageItem.type
         }
-        reader.readAsDataURL(file)
-        return true
+        if (!blob) {
+          const imageFile = files.find(f => f.type?.startsWith('image/'))
+          if (imageFile) { blob = imageFile; mime = imageFile.type }
+        }
+
+        if (blob) {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const base64 = String(reader.result).split(',')[1]
+            const ext = mime === 'image/jpeg' ? 'jpg' : (mime?.split('/')[1] || 'png')
+            uploadAndInsert(base64, ext)
+          }
+          reader.readAsDataURL(blob)
+          return true
+        }
+
+        // 2. Fallback: ask Electron's native clipboard (more reliable on Windows
+        //    for screenshots from Snipping Tool, Greenshot, browsers, etc.)
+        //    Skip if there is plain text — user is pasting text, not an image.
+        if (!hasText && window.api?.clipboard?.readImage) {
+          window.api.clipboard.readImage().then(base64 => {
+            if (base64) uploadAndInsert(base64, 'png')
+          }).catch(err => console.error('Clipboard image read failed:', err))
+          return true
+        }
+
+        return false
       },
     },
     onUpdate: ({ editor }) => {

@@ -4,6 +4,60 @@ import Toolbar from './components/Toolbar'
 import Editor from './components/Editor'
 import Settings from './components/Settings'
 
+function noteDir(notePath) {
+  const i = notePath.lastIndexOf('/')
+  return i >= 0 ? notePath.slice(0, i) : ''
+}
+
+function relativeFromDir(fromDir, toPath) {
+  const fromParts = fromDir ? fromDir.split('/') : []
+  const toParts = toPath.split('/')
+  let i = 0
+  while (i < fromParts.length && i < toParts.length - 1 && fromParts[i] === toParts[i]) i++
+  const ups = fromParts.length - i
+  const rest = toParts.slice(i)
+  return [...Array(ups).fill('..'), ...rest].join('/')
+}
+
+function resolveFromDir(fromDir, relPath) {
+  const stack = fromDir ? fromDir.split('/') : []
+  for (const p of relPath.split('/')) {
+    if (p === '..') stack.pop()
+    else if (p && p !== '.') stack.push(p)
+  }
+  return stack.join('/')
+}
+
+function rawUrlBase(cfg) {
+  if (!cfg?.owner || !cfg?.repo) return null
+  return `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${cfg.branch || 'main'}/`
+}
+
+const IMG_RE = /(!\[[^\]]*\]\()([^)\s]+)(\s+"[^"]*")?(\))/g
+
+function toEditorMarkdown(md, notePath, cfg) {
+  const base = rawUrlBase(cfg)
+  if (!md || !notePath || !base) return md
+  const dir = noteDir(notePath)
+  return md.replace(IMG_RE, (m, pre, src, title, post) => {
+    if (/^[a-z]+:\/\//i.test(src) || src.startsWith('data:') || src.startsWith('/')) return m
+    const full = resolveFromDir(dir, src)
+    return `${pre}${base}${full}${title || ''}${post}`
+  })
+}
+
+function toStorageMarkdown(md, notePath, cfg) {
+  const base = rawUrlBase(cfg)
+  if (!md || !notePath || !base) return md
+  const dir = noteDir(notePath)
+  return md.replace(IMG_RE, (m, pre, src, title, post) => {
+    if (!src.startsWith(base)) return m
+    const full = src.slice(base.length)
+    const rel = relativeFromDir(dir, full)
+    return `${pre}${rel}${title || ''}${post}`
+  })
+}
+
 const FONT_STACKS = {
   system:  "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
   serif:   "Georgia, 'Times New Roman', serif",
@@ -243,8 +297,8 @@ export default function App() {
         )}
 
         <Editor
-          content={content}
-          onChange={setContent}
+          content={toEditorMarkdown(content, activeFile?.path, config)}
+          onChange={md => setContent(toStorageMarkdown(md, activeFile?.path, config))}
           mode={mode}
           activeFile={activeFile}
           onImageUpload={uploadImage}
