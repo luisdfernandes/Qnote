@@ -22,5 +22,6 @@ contextBridge.exposeInMainWorld('api', {
     moveFile:   (data) => ipcRenderer.invoke('github:moveFile', data),
     createFolder: (data) => ipcRenderer.invoke('github:createFolder', data),
     deleteFolder: (data) => ipcRenderer.invoke('github:deleteFolder', data),
+    renameFolder: (data) => ipcRenderer.invoke('github:renameFolder', data),
   },
 })

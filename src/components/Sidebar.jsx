@@ -89,6 +89,8 @@ export default function Sidebar({
   onFileCreate,
   onFolderCreate,
   onFileMove,
+  onFileRename,
+  onFolderRename,
   onRequestDeleteFile,
   onRequestDeleteFolder,
   onSettingsOpen,
@@ -114,6 +116,8 @@ export default function Sidebar({
   const [dragFile, setDragFile] = useState(null)
   const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
   const [contextMenu, setContextMenu] = useState(null) // { type: 'root'|'folder'|'file', target?, x, y }
+  const [renameTarget, setRenameTarget] = useState(null) // { type: 'file'|'folder', id, value }
+  const renameInputRef = useRef(null)
 
   const inputRef = useRef(null)
   const folderInputRef = useRef(null)
@@ -280,6 +284,34 @@ export default function Sidebar({
     setContextMenu({ type, target, x: e.clientX, y: e.clientY })
   }
 
+  function startRenameFile(file) {
+    setRenameTarget({ type: 'file', id: file.path, value: file.name.replace(/\.md$/, ''), original: file })
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function startRenameFolder(node) {
+    setRenameTarget({ type: 'folder', id: node.key, value: node.name, original: node })
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function commitRename() {
+    if (!renameTarget) return
+    const { type, original, value } = renameTarget
+    setRenameTarget(null)
+    if (!value.trim()) return
+    if (type === 'file') {
+      if (value.trim() === original.name.replace(/\.md$/, '')) return
+      onFileRename(original, value)
+    } else {
+      if (value.trim() === original.name) return
+      onFolderRename(original.key, value)
+    }
+  }
+
+  function cancelRename() {
+    setRenameTarget(null)
+  }
+
   function handleDragStart(e, file) {
     setDragFile(file)
     e.dataTransfer.effectAllowed = 'move'
@@ -337,7 +369,23 @@ export default function Sidebar({
                   </svg>
                 )}
               </span>
-              <span className="folder-label">{node.name}</span>
+              {renameTarget?.type === 'folder' && renameTarget.id === node.key ? (
+                <input
+                  ref={renameInputRef}
+                  className="rename-input"
+                  value={renameTarget.value}
+                  onChange={e => setRenameTarget(t => ({ ...t, value: e.target.value }))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitRename()
+                    else if (e.key === 'Escape') cancelRename()
+                  }}
+                  onBlur={commitRename}
+                  onClick={e => e.stopPropagation()}
+                  autoFocus
+                />
+              ) : (
+                <span className="folder-label">{node.name}</span>
+              )}
             </div>
             {isOpen && renderTree(node.children, depth + 1)}
           </div>
@@ -356,7 +404,23 @@ export default function Sidebar({
           onContextMenu={e => openContextMenu(e, 'file', node)}
         >
           <span className="file-icon">📄</span>
-          <span className="file-label">{node.name.replace(/\.md$/, '')}</span>
+          {renameTarget?.type === 'file' && renameTarget.id === node.path ? (
+            <input
+              ref={renameInputRef}
+              className="rename-input"
+              value={renameTarget.value}
+              onChange={e => setRenameTarget(t => ({ ...t, value: e.target.value }))}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitRename()
+                else if (e.key === 'Escape') cancelRename()
+              }}
+              onBlur={commitRename}
+              onClick={e => e.stopPropagation()}
+              autoFocus
+            />
+          ) : (
+            <span className="file-label">{node.name.replace(/\.md$/, '')}</span>
+          )}
         </div>
       )
     })
@@ -555,6 +619,10 @@ export default function Sidebar({
                 setContextMenu(null)
               }}>New folder in "{contextMenu.target.name}"</button>
               <div className="context-menu-sep" />
+              <button className="context-menu-item" onClick={() => {
+                startRenameFolder(contextMenu.target)
+                setContextMenu(null)
+              }}>Rename folder</button>
               <button className="context-menu-item context-menu-danger" onClick={() => {
                 onRequestDeleteFolder(contextMenu.target.key, contextMenu.target.name)
                 setContextMenu(null)
@@ -563,10 +631,17 @@ export default function Sidebar({
           )}
 
           {contextMenu.type === 'file' && (
-            <button className="context-menu-item context-menu-danger" onClick={() => {
-              onRequestDeleteFile(contextMenu.target)
-              setContextMenu(null)
-            }}>Delete "{contextMenu.target.name.replace(/\.md$/, '')}"</button>
+            <>
+              <button className="context-menu-item" onClick={() => {
+                startRenameFile(contextMenu.target)
+                setContextMenu(null)
+              }}>Rename</button>
+              <div className="context-menu-sep" />
+              <button className="context-menu-item context-menu-danger" onClick={() => {
+                onRequestDeleteFile(contextMenu.target)
+                setContextMenu(null)
+              }}>Delete "{contextMenu.target.name.replace(/\.md$/, '')}"</button>
+            </>
           )}
         </div>
       )}

@@ -257,6 +257,74 @@ export default function App() {
     }
   }
 
+  async function renameFile(file, newName) {
+    let safe = newName.trim().replace(/[\\/]/g, '-')
+    if (!safe) return
+    if (!safe.endsWith('.md')) safe += '.md'
+    const slash = file.path.lastIndexOf('/')
+    const dir = slash >= 0 ? file.path.slice(0, slash) : ''
+    const newPath = dir ? `${dir}/${safe}` : safe
+    if (newPath === file.path) return
+
+    const folderBase = (config.folder || '').replace(/\/$/, '')
+    const prefix = folderBase ? `${folderBase}/` : ''
+    const newRelPath = newPath.startsWith(prefix) ? newPath.slice(prefix.length) : newPath
+
+    setLoading(true)
+    setError(null)
+    try {
+      const { sha } = await window.api.github.moveFile({ oldPath: file.path, newPath })
+      const renamed = { ...file, path: newPath, name: safe, relativePath: newRelPath, sha }
+      setFiles(prev =>
+        prev.map(f => (f.path === file.path ? renamed : f))
+          .sort((a, b) => (a.relativePath || a.name).localeCompare(b.relativePath || b.name)),
+      )
+      if (activeFile?.path === file.path) setActiveFile(renamed)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function renameFolder(folderKey, newName) {
+    const safe = newName.trim().replace(/[\\/]/g, '-')
+    if (!safe) return
+    const folderBase = (config.folder || '').replace(/\/$/, '')
+    const lastSlash = folderKey.lastIndexOf('/')
+    const parentKey = lastSlash >= 0 ? folderKey.slice(0, lastSlash) : ''
+    const newKey = parentKey ? `${parentKey}/${safe}` : safe
+    if (newKey === folderKey) return
+
+    const oldPath = folderBase ? `${folderBase}/${folderKey}` : folderKey
+    const newPath = folderBase ? `${folderBase}/${newKey}` : newKey
+
+    setLoading(true)
+    setError(null)
+    try {
+      await window.api.github.renameFolder({ oldPath, newPath })
+      const oldPrefix = `${oldPath}/`
+      const newPrefix = `${newPath}/`
+      setFiles(prev =>
+        prev.map(f => {
+          if (!f.path.startsWith(oldPrefix)) return f
+          const np = newPrefix + f.path.slice(oldPrefix.length)
+          const prefix = folderBase ? `${folderBase}/` : ''
+          return { ...f, path: np, relativePath: np.startsWith(prefix) ? np.slice(prefix.length) : np }
+        }),
+      )
+      if (activeFile?.path.startsWith(oldPrefix)) {
+        const np = newPrefix + activeFile.path.slice(oldPrefix.length)
+        const prefix = folderBase ? `${folderBase}/` : ''
+        setActiveFile(prev => ({ ...prev, path: np, relativePath: np.startsWith(prefix) ? np.slice(prefix.length) : np }))
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function deleteFolder(folderKey) {
     const folderBase = (config.folder || '').replace(/\/$/, '')
     const folderPath = folderBase ? `${folderBase}/${folderKey}` : folderKey
@@ -307,14 +375,19 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
+      if (e.key === 's' || e.key === 'S') {
         e.preventDefault()
         saveFile()
+      } else if (e.key === 'e' || e.key === 'E') {
+        if (!activeFile) return
+        e.preventDefault()
+        setMode(m => (m === 'edit' ? 'view' : 'edit'))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [saveFile])
+  }, [saveFile, activeFile])
 
   return (
     <div className="app">
@@ -326,6 +399,8 @@ export default function App() {
         onFileCreate={createFile}
         onFolderCreate={createFolder}
         onFileMove={moveFile}
+        onFileRename={renameFile}
+        onFolderRename={renameFolder}
         onRequestDeleteFile={file => setDeleteTarget({ type: 'file', file })}
         onRequestDeleteFolder={(key, name) => setDeleteTarget({ type: 'folder', key, name })}
         onSettingsOpen={() => setShowSettings(true)}

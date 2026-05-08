@@ -388,6 +388,64 @@ ipcMain.handle('github:deleteFolder', async (_, { folderPath }) => {
   return true
 })
 
+ipcMain.handle('github:renameFolder', async (_, { oldPath, newPath }) => {
+  const { owner, repo, branch, token } = getConfig()
+  if (!oldPath || !newPath) throw new Error('paths required')
+  const oldPrefix = oldPath.replace(/\/$/, '') + '/'
+  const newPrefix = newPath.replace(/\/$/, '') + '/'
+  if (oldPrefix === newPrefix) return false
+
+  const ref = await ghRequest('GET', `/repos/${owner}/${repo}/git/ref/heads/${branch}`, null, token)
+  const commitSha = ref.object.sha
+  const commit = await ghRequest('GET', `/repos/${owner}/${repo}/git/commits/${commitSha}`, null, token)
+  const tree = await ghRequest('GET', `/repos/${owner}/${repo}/git/trees/${commit.tree.sha}?recursive=1`, null, token)
+
+  const affected = (tree.tree || []).filter(t => t.type === 'blob' && t.path.startsWith(oldPrefix))
+  if (affected.length === 0) return false
+
+  const treeEntries = []
+  for (const t of affected) {
+    treeEntries.push({ path: t.path, mode: t.mode, type: 'blob', sha: null })
+    treeEntries.push({ path: newPrefix + t.path.slice(oldPrefix.length), mode: t.mode, type: 'blob', sha: t.sha })
+  }
+
+  const newTree = await ghRequest('POST', `/repos/${owner}/${repo}/git/trees`, {
+    base_tree: commit.tree.sha,
+    tree: treeEntries,
+  }, token)
+
+  const newCommit = await ghRequest('POST', `/repos/${owner}/${repo}/git/commits`, {
+    message: `rename folder ${oldPath} → ${newPath}`,
+    tree: newTree.sha,
+    parents: [commitSha],
+  }, token)
+
+  await ghRequest('PATCH', `/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+    sha: newCommit.sha,
+  }, token)
+
+  // Update local cache
+  const cache = getCache()
+  if (cache.files) {
+    cache.files = cache.files.map(f =>
+      f.path.startsWith(oldPrefix)
+        ? { ...f, path: newPrefix + f.path.slice(oldPrefix.length) }
+        : f
+    )
+    if (cache.contents) {
+      const newContents = {}
+      for (const [k, v] of Object.entries(cache.contents)) {
+        const nk = k.startsWith(oldPrefix) ? newPrefix + k.slice(oldPrefix.length) : k
+        newContents[nk] = v
+      }
+      cache.contents = newContents
+    }
+    saveCache(cache)
+  }
+
+  return true
+})
+
 ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
   const { owner, repo, folder, branch, token } = getConfig()
 
