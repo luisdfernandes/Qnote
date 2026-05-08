@@ -119,6 +119,18 @@ function createWindow() {
     mainWindow.webContents.setZoomFactor(zoom)
   })
 
+  // Cut / Copy / Paste context menu
+  mainWindow.webContents.on('context-menu', (_, params) => {
+    const { isEditable, selectionText, editFlags } = params
+    const hasSelection = selectionText.trim().length > 0
+    if (!isEditable && !hasSelection) return
+    const template = []
+    if (isEditable) template.push({ label: 'Cut',   role: 'cut',   enabled: editFlags.canCut })
+    if (isEditable || hasSelection) template.push({ label: 'Copy', role: 'copy', enabled: editFlags.canCopy })
+    if (isEditable) template.push({ label: 'Paste', role: 'paste', enabled: editFlags.canPaste })
+    Menu.buildFromTemplate(template).popup()
+  })
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)

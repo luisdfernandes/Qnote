@@ -98,6 +98,7 @@ export default function Sidebar({
   )
   const [dragFile, setDragFile] = useState(null)
   const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
+  const [folderMenu, setFolderMenu] = useState(null) // { key, name, x, y }
 
   const inputRef = useRef(null)
   const fileListRef = useRef(null)
@@ -128,6 +129,14 @@ export default function Sidebar({
   useEffect(() => {
     if (searchMode) searchRef.current?.focus()
   }, [searchMode])
+
+  useEffect(() => {
+    if (!folderMenu) return
+    const close = () => setFolderMenu(null)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', e => e.key === 'Escape' && close())
+    return () => document.removeEventListener('mousedown', close)
+  }, [folderMenu])
 
   useEffect(() => {
     if (!activeFile) return
@@ -281,6 +290,7 @@ export default function Sidebar({
               className="folder-item"
               style={{ paddingLeft: `${indent}px` }}
               onClick={() => toggleFolder(node.key)}
+              onContextMenu={e => { e.preventDefault(); setFolderMenu({ key: node.key, name: node.name, x: e.clientX, y: e.clientY }) }}
             >
               <span className="folder-arrow">{isOpen ? '▾' : '▸'}</span>
               <span className="folder-icon">📁</span>
@@ -445,6 +455,26 @@ export default function Sidebar({
           ⚙
         </button>
       </div>
+
+      {folderMenu && (
+        <div
+          className="context-menu"
+          style={{ top: folderMenu.y, left: folderMenu.x }}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              setActiveFolder(folderMenu.key)
+              setExpanded(prev => { const n = new Set(prev); n.add(folderMenu.key); return n })
+              setShowNewInput(true)
+              setFolderMenu(null)
+            }}
+          >
+            New file in "{folderMenu.name}"
+          </button>
+        </div>
+      )}
 
       {deleteTarget && (
         <div className="overlay" onClick={() => setDeleteTarget(null)}>
