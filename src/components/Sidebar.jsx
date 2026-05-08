@@ -76,6 +76,7 @@ export default function Sidebar({
   onFileSelect,
   onFileCreate,
   onFileDelete,
+  onFileMove,
   onSettingsOpen,
 }) {
   const [newFileName, setNewFileName] = useState('')
@@ -95,6 +96,9 @@ export default function Sidebar({
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(COLLAPSED_KEY) === 'true',
   )
+  const [dragFile, setDragFile] = useState(null)
+  const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
+
   const inputRef = useRef(null)
   const fileListRef = useRef(null)
   const isResizing = useRef(false)
@@ -235,14 +239,44 @@ export default function Sidebar({
     setDeleteTarget(null)
   }
 
+  function handleDragStart(e, file) {
+    setDragFile(file)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragEnd() {
+    setDragFile(null)
+    setDropTarget(null)
+  }
+
+  function handleDrop(e, folderKey) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!dragFile) return
+    setDragFile(null)
+    setDropTarget(null)
+    const currentFolder = dragFile.relativePath?.includes('/')
+      ? dragFile.relativePath.split('/').slice(0, -1).join('/')
+      : ''
+    if ((folderKey ?? '') === currentFolder) return
+    onFileMove(dragFile, folderKey ?? '')
+  }
+
   function renderTree(nodes, depth = 0) {
     return nodes.map(node => {
       const indent = 8 + depth * 26
 
       if (node.type === 'folder') {
         const isOpen = expanded.has(node.key)
+        const isDropOver = dragFile && dropTarget === node.key
         return (
-          <div key={node.key}>
+          <div
+            key={node.key}
+            className={isDropOver ? 'drop-target' : ''}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dragFile) setDropTarget(node.key) }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t === node.key ? null : t) }}
+            onDrop={e => handleDrop(e, node.key)}
+          >
             <div
               className="folder-item"
               style={{ paddingLeft: `${indent}px` }}
@@ -262,6 +296,9 @@ export default function Sidebar({
           key={node.path}
           className={`file-item ${activeFile?.path === node.path ? 'active' : ''}`}
           style={{ paddingLeft: `${indent}px` }}
+          draggable
+          onDragStart={e => handleDragStart(e, node)}
+          onDragEnd={handleDragEnd}
           onClick={() => onFileSelect(node)}
         >
           <span className="file-icon">📄</span>
@@ -351,7 +388,13 @@ export default function Sidebar({
         </form>
       )}
 
-      <div className="file-list" ref={fileListRef}>
+      <div
+        className={`file-list${dragFile && dropTarget === null ? ' drop-target-root' : ''}`}
+        ref={fileListRef}
+        onDragOver={e => { e.preventDefault(); if (dragFile) setDropTarget(null) }}
+        onDrop={e => handleDrop(e, null)}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t) }}
+      >
         {searchMode ? (
           searchQuery.trim() === '' ? (
             <div className="hint">Type to search…</div>

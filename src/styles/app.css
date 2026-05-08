@@ -270,6 +270,20 @@ body { user-select: none; }
 
 .file-item:hover { background: var(--bg-hover); }
 
+.file-item[draggable] { cursor: grab; }
+.file-item[draggable]:active { cursor: grabbing; opacity: 0.6; }
+
+.drop-target > .folder-item {
+  background: var(--bg-active);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.file-list.drop-target-root {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .file-item.active {
   background: var(--bg-active);
   border-left-color: var(--accent);

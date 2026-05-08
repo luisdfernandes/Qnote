@@ -143,6 +143,31 @@ export default function App() {
     return url
   }
 
+  async function moveFile(file, targetFolderKey) {
+    const folderBase = (config.folder || '').replace(/\/$/, '')
+    const newRelPath = targetFolderKey ? `${targetFolderKey}/${file.name}` : file.name
+    const newFullPath = folderBase ? `${folderBase}/${newRelPath}` : newRelPath
+    if (file.path === newFullPath) return
+
+    setLoading(true)
+    setError(null)
+    try {
+      const { sha } = await window.api.github.moveFile({ oldPath: file.path, newPath: newFullPath })
+      const movedFile = { ...file, path: newFullPath, relativePath: newRelPath, sha }
+      setFiles(prev =>
+        prev.map(f => f.path === file.path ? movedFile : f)
+          .sort((a, b) => (a.relativePath || a.name).localeCompare(b.relativePath || b.name)),
+      )
+      if (activeFile?.path === file.path) {
+        setActiveFile(movedFile)
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function deleteFile(file) {
     setLoading(true)
     setError(null)
@@ -189,6 +214,7 @@ export default function App() {
         onFileSelect={openFile}
         onFileCreate={createFile}
         onFileDelete={deleteFile}
+        onFileMove={moveFile}
         onSettingsOpen={() => setShowSettings(true)}
       />
 

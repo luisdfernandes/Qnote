@@ -16,5 +16,6 @@ contextBridge.exposeInMainWorld('api', {
     saveFile: (data) => ipcRenderer.invoke('github:saveFile', data),
     uploadImage: (data) => ipcRenderer.invoke('github:uploadImage', data),
     deleteFile: (data) => ipcRenderer.invoke('github:deleteFile', data),
+    moveFile:   (data) => ipcRenderer.invoke('github:moveFile', data),
   },
 })

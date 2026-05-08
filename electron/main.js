@@ -310,3 +310,61 @@ ipcMain.handle('github:deleteFile', async (_, { filePath, sha }) => {
   )
   return true
 })
+
+ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
+  const { owner, repo, folder, branch, token } = getConfig()
+
+  // Fetch current content + sha
+  const fileData = await ghRequest(
+    'GET',
+    `/repos/${owner}/${repo}/contents/${oldPath}?ref=${branch}`,
+    null,
+    token,
+  )
+  const base64Content = fileData.content.replace(/\n/g, '')
+  const oldSha = fileData.sha
+
+  // Create at new path
+  const created = await ghRequest(
+    'PUT',
+    `/repos/${owner}/${repo}/contents/${newPath}`,
+    {
+      message: `move ${path.basename(oldPath)} → ${path.dirname(newPath) === '.' ? 'root' : path.dirname(newPath)}`,
+      content: base64Content,
+      branch,
+    },
+    token,
+  )
+
+  // Delete old path
+  await ghRequest(
+    'DELETE',
+    `/repos/${owner}/${repo}/contents/${oldPath}`,
+    { message: `remove ${path.basename(oldPath)} (moved)`, sha: oldSha, branch },
+    token,
+  )
+
+  // Update cache
+  const folderBase = (folder || '').replace(/^\/|\/$/g, '')
+  const prefix = folderBase ? `${folderBase}/` : ''
+  const cache = getCache()
+  if (cache.files) {
+    const moved = cache.files.find(f => f.path === oldPath)
+    cache.files = cache.files.filter(f => f.path !== oldPath)
+    if (moved) {
+      cache.files.push({
+        name: path.basename(newPath),
+        path: newPath,
+        sha: created.content.sha,
+        relativePath: newPath.slice(prefix.length),
+      })
+    }
+    if (cache.contents?.[oldPath]) {
+      cache.contents[newPath] = cache.contents[oldPath]
+      delete cache.contents[oldPath]
+    }
+    saveCache(cache)
+  }
+
+  return { sha: created.content.sha }
+})
