@@ -22,7 +22,10 @@
       "Bash(node -e \"const pkg=require\\('./node_modules/tiptap-markdown/package.json'\\); console.log\\(JSON.stringify\\(pkg.peerDependencies, null, 2\\)\\)\")",
       "Bash(node -e ' *)",
       "Bash(node -e \"const r = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(r\\).filter\\(k => k.toLowerCase\\(\\).includes\\('state'\\) || k.toLowerCase\\(\\).includes\\('current'\\)\\)\\)\")",
-      "Bash(node scripts/generate-icon.js)"
+      "Bash(node scripts/generate-icon.js)",
+      "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\('C:\\\\Dev Projects\\\\Qnote\\\\assets\\\\icon.png'\\); \"$\\($img.Width\\)x$\\($img.Height\\)\"; $img.Dispose\\(\\))",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
