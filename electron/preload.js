@@ -11,9 +11,13 @@ contextBridge.exposeInMainWorld('api', {
   clipboard: {
     readImage: () => ipcRenderer.invoke('clipboard:readImage'),
   },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  },
   github: {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: () => ipcRenderer.invoke('github:listFiles'),
+    loadAllMetadata: () => ipcRenderer.invoke('github:loadAllMetadata'),
     search: (query) => ipcRenderer.invoke('github:search', query),
     getFile: (filePath) => ipcRenderer.invoke('github:getFile', filePath),
     saveFile: (data) => ipcRenderer.invoke('github:saveFile', data),

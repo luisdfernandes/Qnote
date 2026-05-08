@@ -56,6 +56,26 @@ function saveCache(data) {
   } catch { /* non-fatal */ }
 }
 
+// ── Front matter (categories only — minimal extractor) ─────────────────────
+function extractCategories(md) {
+  if (!md) return []
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!m) return []
+  const line = m[1].split(/\r?\n/).find(l => /^categories\s*:/i.test(l))
+  if (!line) return []
+  const v = line.replace(/^categories\s*:\s*/i, '').trim()
+  if (v.startsWith('[') && v.endsWith(']')) {
+    return v.slice(1, -1).split(',')
+      .map(s => s.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean)
+  }
+  return v ? [v] : []
+}
+
+function encodePath(p) {
+  return String(p || '').split('/').map(encodeURIComponent).join('/')
+}
+
 // ── GitHub API (fetch is built-in in Node 18+ / Electron 28+) ───────────────
 async function ghRequest(method, endpoint, body, token) {
   const res = await fetch(`https://api.github.com${endpoint}`, {
@@ -159,6 +179,12 @@ ipcMain.handle('zoom:set', (_, factor) => {
   mainWindow.webContents.setZoomFactor(factor)
 })
 
+ipcMain.handle('shell:openExternal', (_, url) => {
+  if (typeof url !== 'string') return
+  if (!/^https?:\/\//i.test(url)) return
+  shell.openExternal(url)
+})
+
 ipcMain.handle('clipboard:readImage', () => {
   const img = clipboard.readImage()
   if (img.isEmpty()) return null
@@ -227,6 +253,41 @@ ipcMain.handle('github:listFiles', async () => {
   }
 })
 
+ipcMain.handle('github:loadAllMetadata', async () => {
+  const { owner, repo, branch, token } = getConfig()
+  if (!token || !owner || !repo) return {}
+  const cache = getCache()
+  const mdFiles = (cache.files || []).filter(f => f.path.endsWith('.md'))
+  cache.contents = cache.contents || {}
+
+  const tasks = mdFiles.map(async file => {
+    const cached = cache.contents[file.path]
+    if (cached?.sha === file.sha) return
+    try {
+      const data = await ghRequest(
+        'GET',
+        `/repos/${owner}/${repo}/contents/${encodePath(file.path)}?ref=${branch}`,
+        null,
+        token,
+      )
+      const content = Buffer.from(data.content, 'base64').toString('utf8')
+      cache.contents[file.path] = { content, sha: data.sha }
+    } catch { /* skip individual failures */ }
+  })
+
+  await Promise.all(tasks)
+  saveCache(cache)
+
+  const result = {}
+  for (const file of mdFiles) {
+    const c = cache.contents[file.path]
+    if (!c) continue
+    const cats = extractCategories(c.content)
+    if (cats.length) result[file.path] = cats
+  }
+  return result
+})
+
 ipcMain.handle('github:search', async (_, query) => {
   const q = (query || '').trim().toLowerCase()
   if (!q) return []
@@ -266,7 +327,7 @@ ipcMain.handle('github:getFile', async (_, filePath) => {
   try {
     const data = await ghRequest(
       'GET',
-      `/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+      `/repos/${owner}/${repo}/contents/${encodePath(filePath)}?ref=${branch}`,
       null,
       token,
     )
@@ -300,7 +361,7 @@ ipcMain.handle('github:saveFile', async (_, { filePath, content, sha, message })
 
   const data = await ghRequest(
     'PUT',
-    `/repos/${owner}/${repo}/contents/${filePath}`,
+    `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`,
     body,
     token,
   )
@@ -317,8 +378,8 @@ ipcMain.handle('github:uploadImage', async (_, { filePath, base64Data }) => {
     branch,
   }
 
-  const data = await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${filePath}`, body, token)
-  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`
+  const data = await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, body, token)
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${encodePath(filePath)}`
   return { sha: data.content.sha, url: rawUrl }
 })
 
@@ -326,7 +387,7 @@ ipcMain.handle('github:deleteFile', async (_, { filePath, sha }) => {
   const { owner, repo, branch, token } = getConfig()
   await ghRequest(
     'DELETE',
-    `/repos/${owner}/${repo}/contents/${filePath}`,
+    `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`,
     { message: `delete ${path.basename(filePath)}`, sha, branch },
     token,
   )
@@ -337,7 +398,7 @@ ipcMain.handle('github:createFolder', async (_, { folderPath }) => {
   const { owner, repo, branch, token } = getConfig()
   if (!folderPath) throw new Error('folderPath required')
   const filePath = `${folderPath.replace(/\/$/, '')}/.gitkeep`
-  await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${filePath}`, {
+  await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, {
     message: `create folder ${folderPath}`,
     content: '',
     branch,
@@ -452,7 +513,7 @@ ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
   // Fetch current content + sha
   const fileData = await ghRequest(
     'GET',
-    `/repos/${owner}/${repo}/contents/${oldPath}?ref=${branch}`,
+    `/repos/${owner}/${repo}/contents/${encodePath(oldPath)}?ref=${branch}`,
     null,
     token,
   )
@@ -462,7 +523,7 @@ ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
   // Create at new path
   const created = await ghRequest(
     'PUT',
-    `/repos/${owner}/${repo}/contents/${newPath}`,
+    `/repos/${owner}/${repo}/contents/${encodePath(newPath)}`,
     {
       message: `move ${path.basename(oldPath)} → ${path.dirname(newPath) === '.' ? 'root' : path.dirname(newPath)}`,
       content: base64Content,
@@ -474,7 +535,7 @@ ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
   // Delete old path
   await ghRequest(
     'DELETE',
-    `/repos/${owner}/${repo}/contents/${oldPath}`,
+    `/repos/${owner}/${repo}/contents/${encodePath(oldPath)}`,
     { message: `remove ${path.basename(oldPath)} (moved)`, sha: oldSha, branch },
     token,
   )

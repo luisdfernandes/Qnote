@@ -4,6 +4,41 @@ import Toolbar from './components/Toolbar'
 import Editor from './components/Editor'
 import Settings from './components/Settings'
 
+function parseFrontMatter(md) {
+  if (!md) return { meta: {}, body: '' }
+  const match = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
+  if (!match) return { meta: {}, body: md }
+  const meta = {}
+  for (const line of match[1].split(/\r?\n/)) {
+    const m = line.match(/^([\w-]+):\s*(.*)$/)
+    if (!m) continue
+    let v = m[2].trim()
+    if (v.startsWith('[') && v.endsWith(']')) {
+      v = v.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
+    } else {
+      v = v.replace(/^["']|["']$/g, '')
+    }
+    meta[m[1]] = v
+  }
+  return { meta, body: md.slice(match[0].length) }
+}
+
+function serializeFrontMatter(meta, body) {
+  const keys = Object.keys(meta).filter(k => {
+    const v = meta[k]
+    if (Array.isArray(v)) return v.length > 0
+    return v !== undefined && v !== null && v !== ''
+  })
+  if (keys.length === 0) return body
+  const lines = keys.map(k => {
+    const v = meta[k]
+    if (Array.isArray(v)) return `${k}: [${v.join(', ')}]`
+    return `${k}: ${v}`
+  })
+  const trimmedBody = body.replace(/^\s+/, '')
+  return `---\n${lines.join('\n')}\n---\n\n${trimmedBody}`
+}
+
 function noteDir(notePath) {
   const i = notePath.lastIndexOf('/')
   return i >= 0 ? notePath.slice(0, i) : ''
@@ -35,14 +70,24 @@ function rawUrlBase(cfg) {
 
 const IMG_RE = /(!\[[^\]]*\]\()([^)\s]+)(\s+"[^"]*")?(\))/g
 
+function safeDecode(s) {
+  try { return decodeURI(s) } catch { return s }
+}
+
+function encodeRelPath(p) {
+  return p.split('/').map(s => (s === '..' || s === '.') ? s : encodeURIComponent(s)).join('/')
+}
+
 function toEditorMarkdown(md, notePath, cfg) {
   const base = rawUrlBase(cfg)
   if (!md || !notePath || !base) return md
   const dir = noteDir(notePath)
   return md.replace(IMG_RE, (m, pre, src, title, post) => {
     if (/^[a-z]+:\/\//i.test(src) || src.startsWith('data:') || src.startsWith('/')) return m
-    const full = resolveFromDir(dir, src)
-    return `${pre}${base}${full}${title || ''}${post}`
+    const decoded = safeDecode(src)
+    const full = resolveFromDir(dir, decoded)
+    const encoded = full.split('/').map(encodeURIComponent).join('/')
+    return `${pre}${base}${encoded}${title || ''}${post}`
   })
 }
 
@@ -52,9 +97,10 @@ function toStorageMarkdown(md, notePath, cfg) {
   const dir = noteDir(notePath)
   return md.replace(IMG_RE, (m, pre, src, title, post) => {
     if (!src.startsWith(base)) return m
-    const full = src.slice(base.length)
-    const rel = relativeFromDir(dir, full)
-    return `${pre}${rel}${title || ''}${post}`
+    const fullEncoded = src.slice(base.length)
+    const fullDecoded = safeDecode(fullEncoded)
+    const rel = relativeFromDir(dir, fullDecoded)
+    return `${pre}${encodeRelPath(rel)}${title || ''}${post}`
   })
 }
 
@@ -96,6 +142,8 @@ export default function App() {
   const [activeFile, setActiveFile] = useState(null)
   const [content, setContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
+  const [meta, setMeta] = useState({})
+  const [savedMeta, setSavedMeta] = useState({})
   const [mode, setMode] = useState('view')
   const [showSettings, setShowSettings] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -103,8 +151,12 @@ export default function App() {
   const [status, setStatus] = useState('')
   const [offline, setOffline] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [lastSync, setLastSync] = useState(null)
+  const [fileCategories, setFileCategories] = useState({}) // { path: [cat, cat] }
 
-  const isDirty = content !== savedContent
+  const isDirty =
+    content !== savedContent ||
+    JSON.stringify(meta) !== JSON.stringify(savedMeta)
 
   useEffect(() => { loadConfig() }, [])
 
@@ -126,6 +178,11 @@ export default function App() {
       const { files, fromCache } = await window.api.github.listFiles()
       setFiles(files)
       setOffline(fromCache)
+      if (!fromCache) setLastSync(Date.now())
+      // Refresh category mapping in background — don't block UI
+      window.api.github.loadAllMetadata()
+        .then(setFileCategories)
+        .catch(() => { /* non-fatal */ })
     } catch (e) {
       setError(e.message)
     } finally {
@@ -138,9 +195,12 @@ export default function App() {
     setError(null)
     try {
       const { content: text, sha, fromCache } = await window.api.github.getFile(file.path)
+      const { meta: parsedMeta, body } = parseFrontMatter(text)
       setActiveFile({ ...file, sha })
-      setContent(text)
-      setSavedContent(text)
+      setContent(body)
+      setSavedContent(body)
+      setMeta(parsedMeta)
+      setSavedMeta(parsedMeta)
       if (fromCache) setOffline(true)
     } catch (e) {
       setError(e.message)
@@ -154,16 +214,31 @@ export default function App() {
     setLoading(true)
     setStatus('Saving…')
     try {
+      const newMeta = {
+        ...meta,
+        created: meta.created || new Date().toISOString(),
+        modified: new Date().toISOString(),
+      }
+      const fullContent = serializeFrontMatter(newMeta, content)
       const { sha } = await window.api.github.saveFile({
         filePath: activeFile.path,
-        content,
+        content: fullContent,
         sha: activeFile.sha,
       })
       setActiveFile(prev => ({ ...prev, sha }))
       setSavedContent(content)
+      setMeta(newMeta)
+      setSavedMeta(newMeta)
       setFiles(prev =>
         prev.map(f => (f.path === activeFile.path ? { ...f, sha } : f)),
       )
+      setFileCategories(prev => {
+        const cats = Array.isArray(newMeta.categories) ? newMeta.categories : []
+        const next = { ...prev }
+        if (cats.length) next[activeFile.path] = cats
+        else delete next[activeFile.path]
+        return next
+      })
       setStatus('Saved ✓')
       setTimeout(() => setStatus(''), 2500)
       setMode('view')
@@ -173,7 +248,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [activeFile, content, isDirty])
+  }, [activeFile, content, isDirty, meta])
 
   async function createFile(name, subFolder = '') {
     const fileName = name.endsWith('.md') ? name : `${name}.md`
@@ -186,9 +261,12 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
+      const now = new Date().toISOString()
+      const initialMeta = { categories: [], created: now, modified: now }
+      const initialBody = `# ${title}\n\n`
       const { sha } = await window.api.github.saveFile({
         filePath,
-        content: `# ${title}\n\n`,
+        content: serializeFrontMatter(initialMeta, initialBody),
         sha: null,
       })
       const relativePath = sub ? `${sub}/${fileName}` : fileName
@@ -339,6 +417,8 @@ export default function App() {
         setActiveFile(null)
         setContent('')
         setSavedContent('')
+        setMeta({})
+        setSavedMeta({})
       }
     } catch (e) {
       setError(e.message)
@@ -357,11 +437,38 @@ export default function App() {
         setActiveFile(null)
         setContent('')
         setSavedContent('')
+        setMeta({})
+        setSavedMeta({})
       }
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  function getNoteUrl() {
+    if (!activeFile || !config?.owner || !config?.repo) return null
+    const branch = config.branch || 'main'
+    const encodedPath = activeFile.path.split('/').map(encodeURIComponent).join('/')
+    return `https://github.com/${config.owner}/${config.repo}/blob/${encodeURIComponent(branch)}/${encodedPath}`
+  }
+
+  function openOnGitHub() {
+    const url = getNoteUrl()
+    if (url) window.api.shell.openExternal(url)
+  }
+
+  async function copyShareUrl() {
+    const url = getNoteUrl()
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setStatus('Link copied ✓')
+      setTimeout(() => setStatus(''), 2000)
+    } catch {
+      setStatus('Copy failed')
+      setTimeout(() => setStatus(''), 2000)
     }
   }
 
@@ -372,6 +479,12 @@ export default function App() {
     setShowSettings(false)
     loadFiles()
   }
+
+  useEffect(() => {
+    if (!config?.token || !config?.owner || !config?.repo) return
+    const id = setInterval(() => loadFiles(), 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [config?.token, config?.owner, config?.repo])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -404,6 +517,10 @@ export default function App() {
         onRequestDeleteFile={file => setDeleteTarget({ type: 'file', file })}
         onRequestDeleteFolder={(key, name) => setDeleteTarget({ type: 'folder', key, name })}
         onSettingsOpen={() => setShowSettings(true)}
+        onSync={loadFiles}
+        syncing={loading}
+        lastSync={lastSync}
+        fileCategories={fileCategories}
       />
 
       <div className="main">
@@ -415,7 +532,10 @@ export default function App() {
           status={status}
           onModeToggle={() => setMode(m => (m === 'edit' ? 'view' : 'edit'))}
           onSave={saveFile}
-          onRefresh={loadFiles}
+          meta={meta}
+          onMetaChange={setMeta}
+          onOpenGitHub={openOnGitHub}
+          onShareUrl={copyShareUrl}
           onRequestDelete={() => activeFile && setDeleteTarget({ type: 'file', file: activeFile })}
         />
 

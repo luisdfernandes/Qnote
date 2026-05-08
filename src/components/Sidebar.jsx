@@ -71,6 +71,16 @@ function parentFolderKeys(relativePath) {
   return keys
 }
 
+function relativeTime(ts) {
+  if (!ts) return 'never'
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 10) return 'just now'
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
 function highlight(text, query) {
   if (!query) return text
   const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
@@ -94,6 +104,10 @@ export default function Sidebar({
   onRequestDeleteFile,
   onRequestDeleteFolder,
   onSettingsOpen,
+  onSync,
+  syncing,
+  lastSync,
+  fileCategories,
 }) {
   const [newFileName, setNewFileName] = useState('')
   const [showNewInput, setShowNewInput] = useState(false)
@@ -116,8 +130,15 @@ export default function Sidebar({
   const [dragFile, setDragFile] = useState(null)
   const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
   const [contextMenu, setContextMenu] = useState(null) // { type: 'root'|'folder'|'file', target?, x, y }
+  const [activeCategories, setActiveCategories] = useState(() => new Set())
   const [renameTarget, setRenameTarget] = useState(null) // { type: 'file'|'folder', id, value }
   const renameInputRef = useRef(null)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30000)
+    return () => clearInterval(id)
+  }, [])
 
   const inputRef = useRef(null)
   const folderInputRef = useRef(null)
@@ -426,7 +447,33 @@ export default function Sidebar({
     })
   }
 
-  const tree = buildTree(files)
+  const allCategories = useMemo(() => {
+    const set = new Set()
+    for (const cats of Object.values(fileCategories || {})) {
+      for (const c of cats) set.add(c)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [fileCategories])
+
+  const filteredFiles = useMemo(() => {
+    if (activeCategories.size === 0) return files
+    return files.filter(f => {
+      if (f.name === '.gitkeep') return true // keep folder structure visible
+      const cats = fileCategories?.[f.path] || []
+      return cats.some(c => activeCategories.has(c))
+    })
+  }, [files, fileCategories, activeCategories])
+
+  const tree = buildTree(filteredFiles)
+
+  function toggleCategory(cat) {
+    setActiveCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
 
   const sidebarStyle = collapsed
     ? { width: 0, minWidth: 0, overflow: 'hidden' }
@@ -517,6 +564,27 @@ export default function Sidebar({
         </form>
       )}
 
+      {!searchMode && allCategories.length > 0 && (
+        <div className="category-filter">
+          {allCategories.map(c => (
+            <button
+              key={c}
+              type="button"
+              className={`filter-chip${activeCategories.has(c) ? ' is-active' : ''}`}
+              onClick={() => toggleCategory(c)}
+            >{c}</button>
+          ))}
+          {activeCategories.size > 0 && (
+            <button
+              type="button"
+              className="filter-chip filter-chip-clear"
+              onClick={() => setActiveCategories(new Set())}
+              title="Clear filters"
+            >× clear</button>
+          )}
+        </div>
+      )}
+
       <div
         className={`file-list${dragFile && dropTarget === null ? ' drop-target-root' : ''}`}
         ref={fileListRef}
@@ -576,6 +644,15 @@ export default function Sidebar({
       <div className="sidebar-footer">
         <button className="btn-icon" onClick={onSettingsOpen} title="Settings">
           ⚙
+        </button>
+        <button
+          className="sidebar-sync"
+          onClick={onSync}
+          disabled={syncing}
+          title={lastSync ? `Last synced ${new Date(lastSync).toLocaleTimeString()} — click to sync now` : 'Sync now'}
+        >
+          <span className={`sync-icon${syncing ? ' is-spinning' : ''}`}>↺</span>
+          <span className="sync-label">{lastSync ? relativeTime(lastSync) : 'sync'}</span>
         </button>
       </div>
 

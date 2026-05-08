@@ -436,9 +436,29 @@ body { user-select: none; }
   padding: 6px 10px;
   border-top: 1px solid var(--border);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
+
+.sidebar-sync {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  transition: color 0.1s, background 0.1s;
+}
+.sidebar-sync:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+.sidebar-sync:disabled { opacity: 0.5; cursor: default; }
+.sidebar-sync .sync-icon { font-size: 14px; line-height: 1; }
+.sidebar-sync .sync-label { font-size: 11px; }
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
 .main {
@@ -451,18 +471,119 @@ body { user-select: none; }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 .toolbar {
-  height: var(--toolbar-h);
+  min-height: var(--toolbar-h);
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 6px 14px;
   gap: 10px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-.toolbar-left { flex: 1; overflow: hidden; display: flex; align-items: center; gap: 8px; }
+.toolbar-dates {
+  display: inline-flex;
+  gap: 12px;
+  margin-left: 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.toolbar-categories {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Sidebar category filter ─────────────────────────────────────────────── */
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-chip {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+.filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+.filter-chip.is-active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.filter-chip-clear {
+  color: var(--danger);
+  border-color: transparent;
+}
+.filter-chip-clear:hover { color: var(--danger); border-color: var(--danger); }
+
+.meta-key {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: var(--bg-active, var(--bg-hover));
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  line-height: 1.5;
+}
+
+.meta-chip-remove {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+.meta-chip-remove:hover { opacity: 1; color: var(--danger); }
+
+.meta-add-btn {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  transition: color 0.1s, border-color 0.1s;
+}
+.meta-add-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.meta-add-input {
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  font: inherit;
+  padding: 2px 8px;
+  border-radius: 999px;
+  outline: none;
+  width: 110px;
+}
+
+.toolbar-left { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
 .toolbar-filename {
   font-size: 13px;
@@ -560,6 +681,14 @@ body { user-select: none; }
 }
 .btn-icon-label:hover { color: var(--text); background: var(--bg-hover); }
 .btn-icon-label:disabled { opacity: 0.3; cursor: default; }
+
+.sync-icon { display: inline-block; line-height: 1; }
+.sync-icon.is-spinning { animation: sync-spin 0.8s linear infinite; }
+
+@keyframes sync-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
 
 /* ── Offline banner ──────────────────────────────────────────────────────── */
 .offline-banner {
