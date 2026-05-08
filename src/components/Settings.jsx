@@ -7,6 +7,17 @@ const THEMES = [
   { id: 'light',  label: 'Light',   swatch: '#f0f0f0' },
 ]
 
+const ACCENTS = [
+  { id: 'mint',   label: 'Mint',     color: '#4ec9b0', dim: '#3aab96' },
+  { id: 'cyan',   label: 'Cyan',     color: '#00d4d4', dim: '#00a8a8' },
+  { id: 'blue',   label: 'Blue',     color: '#4a9eff', dim: '#2d80e0' },
+  { id: 'purple', label: 'Purple',   color: '#b07cff', dim: '#9560e0' },
+  { id: 'pink',   label: 'Pink',     color: '#ff5ea8', dim: '#e0408a' },
+  { id: 'orange', label: 'Orange',   color: '#ff9f43', dim: '#e0832c' },
+  { id: 'gold',   label: 'Gold',     color: '#f1c40f', dim: '#d4ac0d' },
+  { id: 'lime',   label: 'Lime',     color: '#a3e048', dim: '#88c038' },
+]
+
 const FONTS = [
   { id: 'system',  label: 'System default', preview: 'sans-serif' },
   { id: 'calibri', label: 'Calibri',        preview: 'Calibri, sans-serif' },
@@ -23,6 +34,7 @@ export default function Settings({ config, onSave, onClose, canClose }) {
     branch: config?.branch || 'main',
     token:  config?.token  || '',
     theme:  config?.theme  || 'dark',
+    accent: config?.accent || 'mint',
     font:   config?.font   || 'system',
     zoom:   config?.zoom   ?? 1,
   })
@@ -50,6 +62,13 @@ export default function Settings({ config, onSave, onClose, canClose }) {
     }
     if (key === 'zoom') {
       window.api.zoom.set(val)
+    }
+    if (key === 'accent') {
+      const a = ACCENTS.find(x => x.id === val)
+      if (a) {
+        document.documentElement.style.setProperty('--accent', a.color)
+        document.documentElement.style.setProperty('--accent-dim', a.dim)
+      }
     }
   }
 
@@ -162,6 +181,23 @@ export default function Settings({ config, onSave, onClose, canClose }) {
                 >
                   <span className="swatch-label">{t.label}</span>
                 </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Accent color</label>
+            <div className="accent-picker">
+              {ACCENTS.map(a => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`accent-swatch ${form.accent === a.id ? 'selected' : ''}`}
+                  onClick={() => pick('accent', a.id)}
+                  style={{ background: a.color, color: a.color }}
+                  title={a.label}
+                  aria-label={a.label}
+                />
               ))}
             </div>
           </div>

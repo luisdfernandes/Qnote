@@ -66,14 +66,28 @@ const FONT_STACKS = {
   verdana: "Verdana, Geneva, sans-serif",
 }
 
+const ACCENT_COLORS = {
+  mint:   { color: '#4ec9b0', dim: '#3aab96' },
+  cyan:   { color: '#00d4d4', dim: '#00a8a8' },
+  blue:   { color: '#4a9eff', dim: '#2d80e0' },
+  purple: { color: '#b07cff', dim: '#9560e0' },
+  pink:   { color: '#ff5ea8', dim: '#e0408a' },
+  orange: { color: '#ff9f43', dim: '#e0832c' },
+  gold:   { color: '#f1c40f', dim: '#d4ac0d' },
+  lime:   { color: '#a3e048', dim: '#88c038' },
+}
+
 function applyPreferences(cfg) {
-  const theme = cfg?.theme || 'dark'
-  const font  = cfg?.font  || 'system'
+  const theme  = cfg?.theme  || 'dark'
+  const font   = cfg?.font   || 'system'
+  const accent = ACCENT_COLORS[cfg?.accent] || ACCENT_COLORS.mint
   document.documentElement.setAttribute('data-theme', theme)
   document.documentElement.style.setProperty(
     '--font-content',
     FONT_STACKS[font] ?? FONT_STACKS.system,
   )
+  document.documentElement.style.setProperty('--accent', accent.color)
+  document.documentElement.style.setProperty('--accent-dim', accent.dim)
 }
 
 export default function App() {
@@ -389,7 +403,11 @@ export default function App() {
         <Settings
           config={config}
           onSave={handleConfigSave}
-          onClose={() => config?.token ? setShowSettings(false) : null}
+          onClose={() => {
+            if (!config?.token) return
+            applyPreferences(config) // revert any live previews
+            setShowSettings(false)
+          }}
           canClose={!!(config?.token && config?.owner && config?.repo)}
         />
       )}

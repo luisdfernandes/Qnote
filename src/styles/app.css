@@ -910,6 +910,32 @@ body { user-select: none; }
 .theme-swatch:hover { transform: translateY(-1px); border-color: var(--text-dim); }
 .theme-swatch.selected { border-color: var(--accent); }
 
+/* ── Accent picker ───────────────────────────────────────────────────────── */
+.accent-picker {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.accent-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.accent-swatch:hover {
+  transform: scale(1.08);
+}
+
+.accent-swatch.selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg-modal), 0 0 0 4px currentColor;
+}
+
 .swatch-label {
   font-size: 10px;
   font-weight: 600;
