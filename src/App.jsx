@@ -88,6 +88,7 @@ export default function App() {
   const [error, setError] = useState(null)
   const [status, setStatus] = useState('')
   const [offline, setOffline] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const isDirty = content !== savedContent
 
@@ -222,6 +223,48 @@ export default function App() {
     }
   }
 
+  async function createFolder(name, parentFolder = '') {
+    const folderBase = (config.folder || '').replace(/\/$/, '')
+    const sub = (parentFolder || '').replace(/\/$/, '')
+    const cleanName = name.trim().replace(/^\/|\/$/g, '')
+    if (!cleanName) return
+    const relativePath = sub ? `${sub}/${cleanName}` : cleanName
+    const folderPath = folderBase ? `${folderBase}/${relativePath}` : relativePath
+
+    setLoading(true)
+    setError(null)
+    try {
+      await window.api.github.createFolder({ folderPath })
+      await loadFiles()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function deleteFolder(folderKey) {
+    const folderBase = (config.folder || '').replace(/\/$/, '')
+    const folderPath = folderBase ? `${folderBase}/${folderKey}` : folderKey
+
+    setLoading(true)
+    setError(null)
+    try {
+      await window.api.github.deleteFolder({ folderPath })
+      const prefix = `${folderPath}/`
+      setFiles(prev => prev.filter(f => !f.path.startsWith(prefix)))
+      if (activeFile && activeFile.path.startsWith(prefix)) {
+        setActiveFile(null)
+        setContent('')
+        setSavedContent('')
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function deleteFile(file) {
     setLoading(true)
     setError(null)
@@ -267,8 +310,10 @@ export default function App() {
         loading={loading}
         onFileSelect={openFile}
         onFileCreate={createFile}
-        onFileDelete={deleteFile}
+        onFolderCreate={createFolder}
         onFileMove={moveFile}
+        onRequestDeleteFile={file => setDeleteTarget({ type: 'file', file })}
+        onRequestDeleteFolder={(key, name) => setDeleteTarget({ type: 'folder', key, name })}
         onSettingsOpen={() => setShowSettings(true)}
       />
 
@@ -282,6 +327,7 @@ export default function App() {
           onModeToggle={() => setMode(m => (m === 'edit' ? 'view' : 'edit'))}
           onSave={saveFile}
           onRefresh={loadFiles}
+          onRequestDelete={() => activeFile && setDeleteTarget({ type: 'file', file: activeFile })}
         />
 
         {offline && (
@@ -304,6 +350,40 @@ export default function App() {
           onImageUpload={uploadImage}
         />
       </div>
+
+      {deleteTarget && (
+        <div className="overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="dialog" onClick={e => e.stopPropagation()}>
+            {deleteTarget.type === 'folder' ? (
+              <>
+                <p>Delete folder <strong>{deleteTarget.name}</strong>?</p>
+                <p className="dialog-sub">This will remove the folder and all its contents from GitHub. This cannot be undone.</p>
+              </>
+            ) : (
+              <>
+                <p>Delete <strong>{deleteTarget.file.name}</strong>?</p>
+                <p className="dialog-sub">This will remove it from GitHub and cannot be undone.</p>
+              </>
+            )}
+            <div className="dialog-actions">
+              <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  const target = deleteTarget
+                  setDeleteTarget(null)
+                  if (target.type === 'folder') deleteFolder(target.key)
+                  else deleteFile(target.file)
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <Settings

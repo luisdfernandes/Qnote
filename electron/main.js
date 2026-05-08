@@ -202,7 +202,11 @@ ipcMain.handle('github:listFiles', async () => {
     )
 
     const files = (treeData.tree || [])
-      .filter(f => f.type === 'blob' && f.path.startsWith(prefix) && f.path.endsWith('.md'))
+      .filter(f =>
+        f.type === 'blob' &&
+        f.path.startsWith(prefix) &&
+        (f.path.endsWith('.md') || f.path.endsWith('/.gitkeep') || f.path === `${prefix}.gitkeep`)
+      )
       .map(f => ({
         name: path.basename(f.path),
         path: f.path,
@@ -326,6 +330,61 @@ ipcMain.handle('github:deleteFile', async (_, { filePath, sha }) => {
     { message: `delete ${path.basename(filePath)}`, sha, branch },
     token,
   )
+  return true
+})
+
+ipcMain.handle('github:createFolder', async (_, { folderPath }) => {
+  const { owner, repo, branch, token } = getConfig()
+  if (!folderPath) throw new Error('folderPath required')
+  const filePath = `${folderPath.replace(/\/$/, '')}/.gitkeep`
+  await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${filePath}`, {
+    message: `create folder ${folderPath}`,
+    content: '',
+    branch,
+  }, token)
+  return true
+})
+
+ipcMain.handle('github:deleteFolder', async (_, { folderPath }) => {
+  const { owner, repo, branch, token } = getConfig()
+  if (!folderPath) throw new Error('folderPath required')
+  const prefix = folderPath.replace(/\/$/, '') + '/'
+
+  const ref = await ghRequest('GET', `/repos/${owner}/${repo}/git/ref/heads/${branch}`, null, token)
+  const commitSha = ref.object.sha
+  const commit = await ghRequest('GET', `/repos/${owner}/${repo}/git/commits/${commitSha}`, null, token)
+  const tree = await ghRequest('GET', `/repos/${owner}/${repo}/git/trees/${commit.tree.sha}?recursive=1`, null, token)
+
+  const toDelete = (tree.tree || []).filter(t => t.type === 'blob' && t.path.startsWith(prefix))
+  if (toDelete.length === 0) return true
+
+  const newTree = await ghRequest('POST', `/repos/${owner}/${repo}/git/trees`, {
+    base_tree: commit.tree.sha,
+    tree: toDelete.map(t => ({ path: t.path, mode: t.mode, type: 'blob', sha: null })),
+  }, token)
+
+  const newCommit = await ghRequest('POST', `/repos/${owner}/${repo}/git/commits`, {
+    message: `delete folder ${folderPath}`,
+    tree: newTree.sha,
+    parents: [commitSha],
+  }, token)
+
+  await ghRequest('PATCH', `/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+    sha: newCommit.sha,
+  }, token)
+
+  // Update local cache
+  const cache = getCache()
+  if (cache.files) {
+    cache.files = cache.files.filter(f => !f.path.startsWith(prefix))
+    if (cache.contents) {
+      for (const k of Object.keys(cache.contents)) {
+        if (k.startsWith(prefix)) delete cache.contents[k]
+      }
+    }
+    saveCache(cache)
+  }
+
   return true
 })
 

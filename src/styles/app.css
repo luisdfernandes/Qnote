@@ -337,7 +337,12 @@ body { user-select: none; }
   color: var(--text-muted);
 }
 
-.folder-icon { font-size: 12px; flex-shrink: 0; filter: sepia(1) saturate(5) hue-rotate(190deg); }
+.folder-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
 
 .file-icon { font-size: 12px; flex-shrink: 0; margin-right: 2px; }
 
@@ -523,6 +528,12 @@ body { user-select: none; }
 .btn-icon.is-active { color: var(--accent); background: var(--bg-active); }
 
 .toolbar-mode-btn { font-size: 0; } /* prevent any residual text gap */
+
+.toolbar-delete-btn { font-size: 0; color: var(--danger); }
+.toolbar-delete-btn:hover:not(:disabled) {
+  color: white;
+  background: var(--danger);
+}
 
 .btn-icon-label {
   background: none;
@@ -1284,6 +1295,15 @@ body { user-select: none; }
 }
 
 .context-menu-item:hover { background: var(--bg-hover); }
+
+.context-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.context-menu-danger { color: var(--danger); }
+.context-menu-danger:hover { background: var(--danger); color: white; }
 
 /* ── Zoom control ────────────────────────────────────────────────────────── */
 .zoom-control {

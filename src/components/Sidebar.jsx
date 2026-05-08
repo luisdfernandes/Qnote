@@ -14,25 +14,37 @@ function buildTree(files) {
     (a.relativePath || a.name).localeCompare(b.relativePath || b.name),
   )
 
+  function ensureFolders(parts) {
+    let currentLevel = root
+    let key = ''
+    for (let i = 0; i < parts.length; i++) {
+      key = key ? `${key}/${parts[i]}` : parts[i]
+      if (!folderMap[key]) {
+        const node = { type: 'folder', name: parts[i], key, children: [] }
+        folderMap[key] = node
+        currentLevel.push(node)
+      }
+      currentLevel = folderMap[key].children
+    }
+    return currentLevel
+  }
+
   for (const file of sorted) {
     const rel = file.relativePath || file.name
     const parts = rel.split('/')
+    const isPlaceholder = file.name === '.gitkeep'
+
+    if (isPlaceholder) {
+      // Register parent folder structure but don't render the file
+      if (parts.length > 1) ensureFolders(parts.slice(0, -1))
+      continue
+    }
+
     if (parts.length === 1) {
       root.push({ type: 'file', ...file })
     } else {
-      let currentLevel = root
-      let key = ''
-      for (let i = 0; i < parts.length - 1; i++) {
-        const segment = parts[i]
-        key = key ? `${key}/${segment}` : segment
-        if (!folderMap[key]) {
-          const node = { type: 'folder', name: segment, key, children: [] }
-          folderMap[key] = node
-          currentLevel.push(node)
-        }
-        currentLevel = folderMap[key].children
-      }
-      currentLevel.push({ type: 'file', ...file })
+      const level = ensureFolders(parts.slice(0, -1))
+      level.push({ type: 'file', ...file })
     }
   }
 
@@ -75,14 +87,17 @@ export default function Sidebar({
   loading,
   onFileSelect,
   onFileCreate,
-  onFileDelete,
+  onFolderCreate,
   onFileMove,
+  onRequestDeleteFile,
+  onRequestDeleteFolder,
   onSettingsOpen,
 }) {
   const [newFileName, setNewFileName] = useState('')
   const [showNewInput, setShowNewInput] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false)
   const [activeFolder, setActiveFolder] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState(null)
   const [searchMode, setSearchMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -98,9 +113,10 @@ export default function Sidebar({
   )
   const [dragFile, setDragFile] = useState(null)
   const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
-  const [folderMenu, setFolderMenu] = useState(null) // { key, name, x, y }
+  const [contextMenu, setContextMenu] = useState(null) // { type: 'root'|'folder'|'file', target?, x, y }
 
   const inputRef = useRef(null)
+  const folderInputRef = useRef(null)
   const fileListRef = useRef(null)
   const isResizing = useRef(false)
   const startX = useRef(0)
@@ -109,6 +125,10 @@ export default function Sidebar({
   useEffect(() => {
     if (showNewInput) inputRef.current?.focus()
   }, [showNewInput])
+
+  useEffect(() => {
+    if (showNewFolderInput) folderInputRef.current?.focus()
+  }, [showNewFolderInput])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -131,12 +151,16 @@ export default function Sidebar({
   }, [searchMode])
 
   useEffect(() => {
-    if (!folderMenu) return
-    const close = () => setFolderMenu(null)
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
     document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', e => e.key === 'Escape' && close())
-    return () => document.removeEventListener('mousedown', close)
-  }, [folderMenu])
+    const onKey = e => e.key === 'Escape' && close()
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
 
   useEffect(() => {
     if (!activeFile) return
@@ -238,14 +262,22 @@ export default function Sidebar({
     setShowNewInput(false)
   }
 
-  function handleDeleteClick(e, file) {
-    e.stopPropagation()
-    setDeleteTarget(file)
+  function handleCreateFolder(e) {
+    e.preventDefault()
+    const name = newFolderName.trim()
+    if (!name) return
+    onFolderCreate(name, activeFolder)
+    if (activeFolder) {
+      setExpanded(prev => { const n = new Set(prev); n.add(activeFolder); return n })
+    }
+    setNewFolderName('')
+    setShowNewFolderInput(false)
   }
 
-  function confirmDelete() {
-    if (deleteTarget) onFileDelete(deleteTarget)
-    setDeleteTarget(null)
+  function openContextMenu(e, type, target) {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ type, target, x: e.clientX, y: e.clientY })
   }
 
   function handleDragStart(e, file) {
@@ -290,10 +322,21 @@ export default function Sidebar({
               className="folder-item"
               style={{ paddingLeft: `${indent}px` }}
               onClick={() => toggleFolder(node.key)}
-              onContextMenu={e => { e.preventDefault(); setFolderMenu({ key: node.key, name: node.name, x: e.clientX, y: e.clientY }) }}
+              onContextMenu={e => openContextMenu(e, 'folder', { key: node.key, name: node.name })}
             >
               <span className="folder-arrow">{isOpen ? '▾' : '▸'}</span>
-              <span className="folder-icon">📁</span>
+              <span className="folder-icon">
+                {isOpen ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2"/>
+                    <path d="M3 9h17l-2.5 9a2 2 0 0 1-2 1.5H5a2 2 0 0 1-2-2V9z"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+                  </svg>
+                )}
+              </span>
               <span className="folder-label">{node.name}</span>
             </div>
             {isOpen && renderTree(node.children, depth + 1)}
@@ -310,16 +353,10 @@ export default function Sidebar({
           onDragStart={e => handleDragStart(e, node)}
           onDragEnd={handleDragEnd}
           onClick={() => onFileSelect(node)}
+          onContextMenu={e => openContextMenu(e, 'file', node)}
         >
           <span className="file-icon">📄</span>
           <span className="file-label">{node.name.replace(/\.md$/, '')}</span>
-          <button
-            className="file-del"
-            onClick={e => handleDeleteClick(e, node)}
-            title="Delete"
-          >
-            ×
-          </button>
         </div>
       )
     })
@@ -398,12 +435,34 @@ export default function Sidebar({
         </form>
       )}
 
+      {!searchMode && showNewFolderInput && (
+        <form className="new-file-form" onSubmit={handleCreateFolder}>
+          <input
+            ref={folderInputRef}
+            type="text"
+            placeholder={activeFolder ? `New folder in ${activeFolder}` : 'New folder name'}
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                setShowNewFolderInput(false)
+                setNewFolderName('')
+              }
+            }}
+          />
+        </form>
+      )}
+
       <div
         className={`file-list${dragFile && dropTarget === null ? ' drop-target-root' : ''}`}
         ref={fileListRef}
         onDragOver={e => { e.preventDefault(); if (dragFile) setDropTarget(null) }}
         onDrop={e => handleDrop(e, null)}
         onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t) }}
+        onContextMenu={e => {
+          if (e.target.closest('.file-item') || e.target.closest('.folder-item')) return
+          openContextMenu(e, 'root')
+        }}
       >
         {searchMode ? (
           searchQuery.trim() === '' ? (
@@ -456,42 +515,62 @@ export default function Sidebar({
         </button>
       </div>
 
-      {folderMenu && (
+      {contextMenu && (
         <div
           className="context-menu"
-          style={{ top: folderMenu.y, left: folderMenu.x }}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
           onMouseDown={e => e.stopPropagation()}
         >
-          <button
-            className="context-menu-item"
-            onClick={() => {
-              setActiveFolder(folderMenu.key)
-              setExpanded(prev => { const n = new Set(prev); n.add(folderMenu.key); return n })
-              setShowNewInput(true)
-              setFolderMenu(null)
-            }}
-          >
-            New file in "{folderMenu.name}"
-          </button>
+          {contextMenu.type === 'root' && (
+            <>
+              <button className="context-menu-item" onClick={() => {
+                setActiveFolder('')
+                setShowNewInput(true)
+                setShowNewFolderInput(false)
+                setContextMenu(null)
+              }}>New file</button>
+              <button className="context-menu-item" onClick={() => {
+                setActiveFolder('')
+                setShowNewFolderInput(true)
+                setShowNewInput(false)
+                setContextMenu(null)
+              }}>New folder</button>
+            </>
+          )}
+
+          {contextMenu.type === 'folder' && (
+            <>
+              <button className="context-menu-item" onClick={() => {
+                setActiveFolder(contextMenu.target.key)
+                setExpanded(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
+                setShowNewInput(true)
+                setShowNewFolderInput(false)
+                setContextMenu(null)
+              }}>New file in "{contextMenu.target.name}"</button>
+              <button className="context-menu-item" onClick={() => {
+                setActiveFolder(contextMenu.target.key)
+                setExpanded(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
+                setShowNewFolderInput(true)
+                setShowNewInput(false)
+                setContextMenu(null)
+              }}>New folder in "{contextMenu.target.name}"</button>
+              <div className="context-menu-sep" />
+              <button className="context-menu-item context-menu-danger" onClick={() => {
+                onRequestDeleteFolder(contextMenu.target.key, contextMenu.target.name)
+                setContextMenu(null)
+              }}>Delete folder</button>
+            </>
+          )}
+
+          {contextMenu.type === 'file' && (
+            <button className="context-menu-item context-menu-danger" onClick={() => {
+              onRequestDeleteFile(contextMenu.target)
+              setContextMenu(null)
+            }}>Delete "{contextMenu.target.name.replace(/\.md$/, '')}"</button>
+          )}
         </div>
       )}
 
-      {deleteTarget && (
-        <div className="overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="dialog" onClick={e => e.stopPropagation()}>
-            <p>Delete <strong>{deleteTarget.name}</strong>?</p>
-            <p className="dialog-sub">This will remove it from GitHub and cannot be undone.</p>
-            <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmDelete}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
     </>
   )
