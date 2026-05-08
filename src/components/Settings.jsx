@@ -24,6 +24,7 @@ export default function Settings({ config, onSave, onClose, canClose }) {
     token:  config?.token  || '',
     theme:  config?.theme  || 'dark',
     font:   config?.font   || 'system',
+    zoom:   config?.zoom   ?? 1,
   })
   const [showToken, setShowToken] = useState(false)
   const [testState, setTestState] = useState(null)
@@ -47,6 +48,15 @@ export default function Settings({ config, onSave, onClose, canClose }) {
       }
       document.documentElement.style.setProperty('--font-content', stacks[val])
     }
+    if (key === 'zoom') {
+      window.api.zoom.set(val)
+    }
+  }
+
+  function adjustZoom(delta) {
+    const next = Math.round((form.zoom + delta) * 10) / 10
+    if (next < 0.5 || next > 2.0) return
+    pick('zoom', next)
   }
 
   async function handleTest() {
@@ -170,6 +180,21 @@ export default function Settings({ config, onSave, onClose, canClose }) {
                   {f.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Zoom</label>
+            <div className="zoom-control">
+              <button type="button" className="zoom-btn" onClick={() => adjustZoom(-0.1)}
+                disabled={form.zoom <= 0.5}>−</button>
+              <span className="zoom-value">{Math.round(form.zoom * 100)}%</span>
+              <button type="button" className="zoom-btn" onClick={() => adjustZoom(0.1)}
+                disabled={form.zoom >= 2.0}>+</button>
+              {form.zoom !== 1 && (
+                <button type="button" className="btn btn-ghost zoom-reset"
+                  onClick={() => pick('zoom', 1)}>Reset</button>
+              )}
             </div>
           </div>
 

@@ -5,12 +5,16 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('config:get'),
     save: (cfg) => ipcRenderer.invoke('config:save', cfg),
   },
+  zoom: {
+    set: (factor) => ipcRenderer.invoke('zoom:set', factor),
+  },
   github: {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: () => ipcRenderer.invoke('github:listFiles'),
     search: (query) => ipcRenderer.invoke('github:search', query),
     getFile: (filePath) => ipcRenderer.invoke('github:getFile', filePath),
     saveFile: (data) => ipcRenderer.invoke('github:saveFile', data),
+    uploadImage: (data) => ipcRenderer.invoke('github:uploadImage', data),
     deleteFile: (data) => ipcRenderer.invoke('github:deleteFile', data),
   },
 })

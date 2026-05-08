@@ -136,6 +136,13 @@ export default function App() {
     }
   }
 
+  async function uploadImage(base64Data, filename) {
+    const folderPath = (config.folder || '').replace(/\/$/, '')
+    const imagePath = folderPath ? `${folderPath}/images/${filename}` : `images/${filename}`
+    const { url } = await window.api.github.uploadImage({ filePath: imagePath, base64Data })
+    return url
+  }
+
   async function deleteFile(file) {
     setLoading(true)
     setError(null)
@@ -214,6 +221,7 @@ export default function App() {
           onChange={setContent}
           mode={mode}
           activeFile={activeFile}
+          onImageUpload={uploadImage}
         />
       </div>
 

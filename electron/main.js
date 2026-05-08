@@ -113,11 +113,27 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  // Apply saved zoom level
+  mainWindow.webContents.once('did-finish-load', () => {
+    const zoom = getConfig().zoom ?? 1
+    mainWindow.webContents.setZoomFactor(zoom)
+  })
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+
+  // Inject GitHub token for raw.githubusercontent.com so private repo images load
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['https://raw.githubusercontent.com/*'] },
+    (details, callback) => {
+      const { token } = getConfig()
+      if (token) details.requestHeaders['Authorization'] = `token ${token}`
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
 }
 
 app.whenReady().then(() => { Menu.setApplicationMenu(null); createWindow() })
@@ -127,6 +143,9 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 // ── IPC: Config ──────────────────────────────────────────────────────────────
 ipcMain.handle('config:get', () => getConfig())
 ipcMain.handle('config:save', (_, cfg) => { saveConfig(cfg); return true })
+ipcMain.handle('zoom:set', (_, factor) => {
+  mainWindow.webContents.setZoomFactor(factor)
+})
 
 // ── IPC: GitHub ──────────────────────────────────────────────────────────────
 ipcMain.handle('github:testConnection', async (_, cfg) => {
@@ -264,6 +283,21 @@ ipcMain.handle('github:saveFile', async (_, { filePath, content, sha, message })
     token,
   )
   return { sha: data.content.sha }
+})
+
+ipcMain.handle('github:uploadImage', async (_, { filePath, base64Data }) => {
+  const { owner, repo, branch, token } = getConfig()
+  if (!token || !owner || !repo) throw new Error('GitHub not configured')
+
+  const body = {
+    message: `add image ${path.basename(filePath)}`,
+    content: base64Data,
+    branch,
+  }
+
+  const data = await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${filePath}`, body, token)
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`
+  return { sha: data.content.sha, url: rawUrl }
 })
 
 ipcMain.handle('github:deleteFile', async (_, { filePath, sha }) => {

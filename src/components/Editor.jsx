@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
+import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
@@ -153,13 +154,20 @@ function FormatBar({ editor }) {
   )
 }
 
-function TiptapEditor({ content, onChange }) {
+function TiptapEditor({ content, onChange, onImageUpload }) {
   const skipRef = useRef(false)
+  const uploadRef = useRef(onImageUpload)
+  const editorRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+
+  useEffect(() => { uploadRef.current = onImageUpload }, [onImageUpload])
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
+      Image.configure({ inline: false, allowBase64: false }),
       Markdown.configure({ html: false, transformPastedText: true }),
       Placeholder.configure({ placeholder: 'Start writing…' }),
       TaskList,
@@ -171,6 +179,38 @@ function TiptapEditor({ content, onChange }) {
       TableCell,
     ],
     content: '',
+    editorProps: {
+      handlePaste(view, event) {
+        const items = Array.from(event.clipboardData?.items || [])
+        const imageItem = items.find(item => item.type.startsWith('image/') && item.kind === 'file')
+        if (!imageItem || !uploadRef.current) return false
+
+        const file = imageItem.getAsFile()
+        if (!file) return false
+
+        const reader = new FileReader()
+        reader.onload = async () => {
+          const base64 = reader.result.split(',')[1]
+          const ext = imageItem.type === 'image/jpeg' ? 'jpg' : (imageItem.type.split('/')[1] || 'png')
+          const filename = `pasted-${Date.now()}.${ext}`
+
+          setUploading(true)
+          setUploadError(null)
+          try {
+            const url = await uploadRef.current(base64, filename)
+            editorRef.current?.chain().focus().setImage({ src: url, alt: '' }).run()
+          } catch (err) {
+            console.error('Image upload error:', err)
+            setUploadError(`Upload failed: ${err.message}`)
+            setTimeout(() => setUploadError(null), 6000)
+          } finally {
+            setUploading(false)
+          }
+        }
+        reader.readAsDataURL(file)
+        return true
+      },
+    },
     onUpdate: ({ editor }) => {
       if (!skipRef.current) {
         onChange(editor.storage.markdown.getMarkdown())
@@ -180,6 +220,7 @@ function TiptapEditor({ content, onChange }) {
 
   useEffect(() => {
     if (!editor) return
+    editorRef.current = editor
     skipRef.current = true
     editor.commands.setContent(content)
     skipRef.current = false
@@ -189,6 +230,8 @@ function TiptapEditor({ content, onChange }) {
   return (
     <div className="editor-with-bar">
       <FormatBar editor={editor} />
+      {uploading && <div className="upload-toast">↑ Uploading image…</div>}
+      {uploadError && <div className="upload-toast upload-toast-error">{uploadError}</div>}
       <div className="editor-scroll">
         <div className="content-center">
           <EditorContent editor={editor} className="tiptap-editor" />
@@ -198,7 +241,7 @@ function TiptapEditor({ content, onChange }) {
   )
 }
 
-export default function Editor({ content, onChange, mode, activeFile }) {
+export default function Editor({ content, onChange, mode, activeFile, onImageUpload }) {
   const previewRef = useRef(null)
 
   useEffect(() => {
@@ -245,5 +288,5 @@ export default function Editor({ content, onChange, mode, activeFile }) {
     )
   }
 
-  return <TiptapEditor key={activeFile.path} content={content} onChange={onChange} />
+  return <TiptapEditor key={activeFile.path} content={content} onChange={onChange} onImageUpload={onImageUpload} />
 }

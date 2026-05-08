@@ -938,6 +938,21 @@ body { user-select: none; }
   color: #f99;
 }
 
+/* ── Image upload toast ─────────────────────────────────────────────────── */
+.upload-toast {
+  background: var(--bg-active);
+  color: var(--accent);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.upload-toast-error {
+  background: rgba(244, 71, 71, 0.12);
+  color: var(--danger);
+}
+
 /* ── Format bar (persistent toolbar above TipTap) ───────────────────────── */
 .editor-with-bar {
   flex: 1;
@@ -1095,6 +1110,19 @@ body { user-select: none; }
 }
 
 
+.tiptap-editor img,
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 0.75em 0;
+  display: block;
+}
+
+.tiptap-editor img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  border-radius: 6px;
+}
+
 .tiptap-editor blockquote {
   border-left: 3px solid var(--accent);
   margin: 1em 0;
@@ -1216,6 +1244,41 @@ body { user-select: none; }
   margin: 0 2px;
   flex-shrink: 0;
 }
+
+/* ── Zoom control ────────────────────────────────────────────────────────── */
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.zoom-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.zoom-btn:disabled { opacity: 0.35; cursor: default; }
+
+.zoom-value {
+  min-width: 42px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.zoom-reset { padding: 4px 10px; font-size: 12px; height: 28px; }
 
 /* ── Modal actions ───────────────────────────────────────────────────────── */
 .modal-actions {
