@@ -44,10 +44,21 @@ const cachePath = path.join(app.getPath('userData'), 'cache.json')
 
 function getCache() {
   try {
-    return JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+    const raw = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+    // Migrate legacy { files, contents } → { filesByFolder, contents }
+    if (raw.files && !raw.filesByFolder) {
+      return { filesByFolder: { '': raw.files }, contents: raw.contents || {} }
+    }
+    return { filesByFolder: raw.filesByFolder || {}, contents: raw.contents || {} }
   } catch {
-    return { files: [], contents: {} }
+    return { filesByFolder: {}, contents: {} }
   }
+}
+
+function allCachedFiles(cache) {
+  const out = []
+  for (const arr of Object.values(cache.filesByFolder || {})) out.push(...arr)
+  return out
 }
 
 function saveCache(data) {
@@ -210,12 +221,18 @@ ipcMain.handle('github:testConnection', async (_, cfg) => {
   }
 })
 
-ipcMain.handle('github:listFiles', async () => {
-  const { owner, repo, folder, branch, token } = getConfig()
+ipcMain.handle('github:listFiles', async (_, arg) => {
+  const { owner, repo, branch, token } = getConfig()
   if (!token || !owner || !repo) throw new Error('GitHub is not configured yet.')
+
+  // Backward compat: arg may be a string folder, an object {folder, includeAll}, or undefined.
+  const opts = typeof arg === 'string' ? { folder: arg } : (arg || {})
+  const folder = opts.folder ?? getConfig().folder ?? ''
+  const includeAll = !!opts.includeAll
 
   const folderPath = (folder || '').replace(/^\/|\/$/g, '')
   const prefix = folderPath ? `${folderPath}/` : ''
+  const cacheKey = folderPath
 
   try {
     const branchData = await ghRequest('GET', `/repos/${owner}/${repo}/branches/${branch}`, null, token)
@@ -228,11 +245,14 @@ ipcMain.handle('github:listFiles', async () => {
     )
 
     const files = (treeData.tree || [])
-      .filter(f =>
-        f.type === 'blob' &&
-        f.path.startsWith(prefix) &&
-        (f.path.endsWith('.md') || f.path.endsWith('/.gitkeep') || f.path === `${prefix}.gitkeep`)
-      )
+      .filter(f => {
+        if (f.type !== 'blob') return false
+        if (folderPath && !f.path.startsWith(prefix)) return false
+        if (includeAll) return true
+        return f.path.endsWith('.md') ||
+               f.path.endsWith('/.gitkeep') ||
+               f.path === `${prefix}.gitkeep`
+      })
       .map(f => ({
         name: path.basename(f.path),
         path: f.path,
@@ -242,22 +262,26 @@ ipcMain.handle('github:listFiles', async () => {
       .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 
     const cache = getCache()
-    cache.files = files
+    cache.filesByFolder = cache.filesByFolder || {}
+    cache.filesByFolder[cacheKey] = files
     saveCache(cache)
 
     return { files, fromCache: false }
   } catch (err) {
     const cache = getCache()
-    if (cache.files?.length) return { files: cache.files, fromCache: true }
+    const cached = cache.filesByFolder?.[cacheKey]
+    if (cached?.length) return { files: cached, fromCache: true }
     throw err
   }
 })
 
-ipcMain.handle('github:loadAllMetadata', async () => {
+ipcMain.handle('github:loadAllMetadata', async (_, folder) => {
   const { owner, repo, branch, token } = getConfig()
   if (!token || !owner || !repo) return {}
   const cache = getCache()
-  const mdFiles = (cache.files || []).filter(f => f.path.endsWith('.md'))
+  const folderKey = (folder ?? getConfig().folder ?? '').replace(/^\/|\/$/g, '')
+  const folderFiles = cache.filesByFolder?.[folderKey] || []
+  const mdFiles = folderFiles.filter(f => f.path.endsWith('.md'))
   cache.contents = cache.contents || {}
 
   const tasks = mdFiles.map(async file => {
@@ -294,8 +318,11 @@ ipcMain.handle('github:search', async (_, query) => {
 
   const cache = getCache()
   const results = []
+  const seen = new Set()
 
-  for (const file of (cache.files || [])) {
+  for (const file of allCachedFiles(cache)) {
+    if (seen.has(file.path)) continue
+    seen.add(file.path)
     const titleMatch = file.name.toLowerCase().includes(q) ||
                        file.relativePath.toLowerCase().includes(q)
     const cached = cache.contents?.[file.path]
@@ -368,6 +395,29 @@ ipcMain.handle('github:saveFile', async (_, { filePath, content, sha, message })
   return { sha: data.content.sha }
 })
 
+ipcMain.handle('github:saveBinary', async (_, { filePath, base64Data, sha, message }) => {
+  const { owner, repo, branch, token } = getConfig()
+  const body = {
+    message: message || `update ${path.basename(filePath)}`,
+    content: base64Data,
+    branch,
+  }
+  if (sha) body.sha = sha
+  const data = await ghRequest('PUT', `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, body, token)
+  return { sha: data.content.sha }
+})
+
+ipcMain.handle('github:getFileBinary', async (_, filePath) => {
+  const { owner, repo, branch, token } = getConfig()
+  const data = await ghRequest(
+    'GET',
+    `/repos/${owner}/${repo}/contents/${encodePath(filePath)}?ref=${branch}`,
+    null,
+    token,
+  )
+  return { base64: (data.content || '').replace(/\n/g, ''), sha: data.sha, size: data.size }
+})
+
 ipcMain.handle('github:uploadImage', async (_, { filePath, base64Data }) => {
   const { owner, repo, branch, token } = getConfig()
   if (!token || !owner || !repo) throw new Error('GitHub not configured')
@@ -436,8 +486,10 @@ ipcMain.handle('github:deleteFolder', async (_, { folderPath }) => {
 
   // Update local cache
   const cache = getCache()
-  if (cache.files) {
-    cache.files = cache.files.filter(f => !f.path.startsWith(prefix))
+  if (cache.filesByFolder) {
+    for (const k of Object.keys(cache.filesByFolder)) {
+      cache.filesByFolder[k] = (cache.filesByFolder[k] || []).filter(f => !f.path.startsWith(prefix))
+    }
     if (cache.contents) {
       for (const k of Object.keys(cache.contents)) {
         if (k.startsWith(prefix)) delete cache.contents[k]
@@ -487,12 +539,14 @@ ipcMain.handle('github:renameFolder', async (_, { oldPath, newPath }) => {
 
   // Update local cache
   const cache = getCache()
-  if (cache.files) {
-    cache.files = cache.files.map(f =>
-      f.path.startsWith(oldPrefix)
-        ? { ...f, path: newPrefix + f.path.slice(oldPrefix.length) }
-        : f
-    )
+  if (cache.filesByFolder) {
+    for (const k of Object.keys(cache.filesByFolder)) {
+      cache.filesByFolder[k] = (cache.filesByFolder[k] || []).map(f =>
+        f.path.startsWith(oldPrefix)
+          ? { ...f, path: newPrefix + f.path.slice(oldPrefix.length) }
+          : f
+      )
+    }
     if (cache.contents) {
       const newContents = {}
       for (const [k, v] of Object.entries(cache.contents)) {
@@ -508,7 +562,7 @@ ipcMain.handle('github:renameFolder', async (_, { oldPath, newPath }) => {
 })
 
 ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
-  const { owner, repo, folder, branch, token } = getConfig()
+  const { owner, repo, branch, token } = getConfig()
 
   // Fetch current content + sha
   const fileData = await ghRequest(
@@ -540,20 +594,21 @@ ipcMain.handle('github:moveFile', async (_, { oldPath, newPath }) => {
     token,
   )
 
-  // Update cache
-  const folderBase = (folder || '').replace(/^\/|\/$/g, '')
-  const prefix = folderBase ? `${folderBase}/` : ''
+  // Update cache — find the source folder this file belonged to and update that bucket
   const cache = getCache()
-  if (cache.files) {
-    const moved = cache.files.find(f => f.path === oldPath)
-    cache.files = cache.files.filter(f => f.path !== oldPath)
-    if (moved) {
-      cache.files.push({
+  if (cache.filesByFolder) {
+    for (const folderKey of Object.keys(cache.filesByFolder)) {
+      const arr = cache.filesByFolder[folderKey] || []
+      const idx = arr.findIndex(f => f.path === oldPath)
+      if (idx === -1) continue
+      const prefix = folderKey ? `${folderKey}/` : ''
+      const newRel = newPath.startsWith(prefix) ? newPath.slice(prefix.length) : newPath
+      arr[idx] = {
         name: path.basename(newPath),
         path: newPath,
         sha: created.content.sha,
-        relativePath: newPath.slice(prefix.length),
-      })
+        relativePath: newRel,
+      }
     }
     if (cache.contents?.[oldPath]) {
       cache.contents[newPath] = cache.contents[oldPath]

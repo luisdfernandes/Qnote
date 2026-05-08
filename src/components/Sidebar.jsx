@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import UploadModal from './UploadModal'
 
 const MIN_WIDTH = 160
 const MAX_WIDTH = 480
 const STORAGE_KEY = 'qnote-sidebar-width'
 const COLLAPSED_KEY = 'qnote-sidebar-collapsed'
-const DEFAULT_WIDTH = 230
+const SECTIONS_COLLAPSED_KEY = 'qnote-sections-collapsed'
+const DEFAULT_WIDTH = 240
 
 function buildTree(files) {
   const root = []
   const folderMap = {}
-
   const sorted = [...files].sort((a, b) =>
     (a.relativePath || a.name).localeCompare(b.relativePath || b.name),
   )
@@ -32,17 +33,12 @@ function buildTree(files) {
   for (const file of sorted) {
     const rel = file.relativePath || file.name
     const parts = rel.split('/')
-    const isPlaceholder = file.name === '.gitkeep'
-
-    if (isPlaceholder) {
-      // Register parent folder structure but don't render the file
+    if (file.name === '.gitkeep') {
       if (parts.length > 1) ensureFolders(parts.slice(0, -1))
       continue
     }
-
-    if (parts.length === 1) {
-      root.push({ type: 'file', ...file })
-    } else {
+    if (parts.length === 1) root.push({ type: 'file', ...file })
+    else {
       const level = ensureFolders(parts.slice(0, -1))
       level.push({ type: 'file', ...file })
     }
@@ -56,7 +52,6 @@ function buildTree(files) {
     for (const n of nodes) if (n.type === 'folder') sort(n.children)
     return nodes
   }
-
   return sort(root)
 }
 
@@ -91,89 +86,49 @@ function highlight(text, query) {
   )
 }
 
-export default function Sidebar({
+// ── Per-source section ──────────────────────────────────────────────────────
+function SourceSection({
+  source,
   files,
+  categoriesByPath,
+  isOpen,
+  onToggleOpen,
   activeFile,
-  loading,
   onFileSelect,
-  onFileCreate,
-  onFolderCreate,
   onFileMove,
-  onFileRename,
-  onFolderRename,
+  onUploadBinary,
+  onOpenUpload,
+  startNewFile,
+  startNewFolder,
+  startRenameFile,
+  startRenameFolder,
   onRequestDeleteFile,
   onRequestDeleteFolder,
-  onSettingsOpen,
-  onSync,
-  syncing,
-  lastSync,
-  fileCategories,
+  newFileMode,        // null | { folder: '' }
+  newFolderMode,      // null | { folder: '' }
+  setNewFileMode,
+  setNewFolderMode,
+  renameTarget,
+  setRenameTarget,
+  renameInputRef,
+  commitRename,
+  cancelRename,
+  expandedFolders,
+  setExpandedFolders,
+  activeCategories,
+  toggleCategory,
+  clearCategories,
 }) {
   const [newFileName, setNewFileName] = useState('')
-  const [showNewInput, setShowNewInput] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
-  const [showNewFolderInput, setShowNewFolderInput] = useState(false)
-  const [activeFolder, setActiveFolder] = useState('')
-  const [searchMode, setSearchMode] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searchPending, setSearchPending] = useState(false)
-  const searchRef = useRef(null)
-  const [expanded, setExpanded] = useState(new Set())
-  const [width, setWidth] = useState(() => {
-    const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10)
-    return saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH
-  })
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(COLLAPSED_KEY) === 'true',
-  )
   const [dragFile, setDragFile] = useState(null)
-  const [dropTarget, setDropTarget] = useState(null) // null=root | folderKey
-  const [contextMenu, setContextMenu] = useState(null) // { type: 'root'|'folder'|'file', target?, x, y }
-  const [activeCategories, setActiveCategories] = useState(() => new Set())
-  const [renameTarget, setRenameTarget] = useState(null) // { type: 'file'|'folder', id, value }
-  const renameInputRef = useRef(null)
-  const [, setTick] = useState(0)
-
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 30000)
-    return () => clearInterval(id)
-  }, [])
-
+  const [dropTarget, setDropTarget] = useState(null)
+  const [contextMenu, setContextMenu] = useState(null)
   const inputRef = useRef(null)
   const folderInputRef = useRef(null)
-  const fileListRef = useRef(null)
-  const isResizing = useRef(false)
-  const startX = useRef(0)
-  const startWidth = useRef(0)
 
-  useEffect(() => {
-    if (showNewInput) inputRef.current?.focus()
-  }, [showNewInput])
-
-  useEffect(() => {
-    if (showNewFolderInput) folderInputRef.current?.focus()
-  }, [showNewFolderInput])
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key === 'f') {
-        e.preventDefault()
-        openSearch()
-      } else if (e.key === 'n') {
-        e.preventDefault()
-        closeSearch()
-        setShowNewInput(true)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  useEffect(() => {
-    if (searchMode) searchRef.current?.focus()
-  }, [searchMode])
+  useEffect(() => { if (newFileMode) inputRef.current?.focus() }, [newFileMode])
+  useEffect(() => { if (newFolderMode) folderInputRef.current?.focus() }, [newFolderMode])
 
   useEffect(() => {
     if (!contextMenu) return
@@ -187,187 +142,138 @@ export default function Sidebar({
     }
   }, [contextMenu])
 
-  useEffect(() => {
-    if (!activeFile) return
-    const keys = parentFolderKeys(activeFile.relativePath)
-    setActiveFolder(keys.length ? keys[keys.length - 1] : '')
-  }, [activeFile?.path])
+  const isNotes = source.kind === 'notes'
 
-  useEffect(() => {
-    if (!activeFile || searchMode) return
-    const el = fileListRef.current?.querySelector('.file-item.active')
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [activeFile?.path, searchMode])
+  const allCategories = useMemo(() => {
+    if (!isNotes) return []
+    const set = new Set()
+    for (const cats of Object.values(categoriesByPath || {})) for (const c of cats) set.add(c)
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [categoriesByPath, isNotes])
 
-  useEffect(() => {
-    if (!searchMode || !searchQuery.trim()) {
-      setSearchResults([])
-      return
-    }
-    setSearchPending(true)
-    const timer = setTimeout(async () => {
-      const results = await window.api.github.search(searchQuery)
-      setSearchResults(results)
-      setSearchPending(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchQuery, searchMode])
-
-  function openSearch() {
-    setSearchMode(true)
-    setShowNewInput(false)
-  }
-
-  function closeSearch() {
-    setSearchMode(false)
-    setSearchQuery('')
-    setSearchResults([])
-  }
-
-  const onMouseMove = useCallback((e) => {
-    if (!isResizing.current) return
-    const delta = e.clientX - startX.current
-    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
-    setWidth(next)
-  }, [])
-
-  const onMouseUp = useCallback(() => {
-    if (!isResizing.current) return
-    isResizing.current = false
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    setWidth(prev => {
-      localStorage.setItem(STORAGE_KEY, String(prev))
-      return prev
+  const filteredFiles = useMemo(() => {
+    if (!isNotes || activeCategories.size === 0) return files
+    return files.filter(f => {
+      if (f.name === '.gitkeep') return true
+      const cats = categoriesByPath?.[f.path] || []
+      return cats.some(c => activeCategories.has(c))
     })
-  }, [])
+  }, [files, categoriesByPath, activeCategories, isNotes])
 
-  useEffect(() => {
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [onMouseMove, onMouseUp])
+  const tree = useMemo(() => buildTree(filteredFiles), [filteredFiles])
 
-  function startResize(e) {
-    if (collapsed) return
-    isResizing.current = true
-    startX.current = e.clientX
-    startWidth.current = width
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }
-
-  function toggleCollapse() {
-    setCollapsed(prev => {
-      const next = !prev
-      localStorage.setItem(COLLAPSED_KEY, String(next))
-      return next
-    })
-  }
-
-  function toggleFolder(key) {
-    setActiveFolder(key)
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  function openContextMenu(e, type, target) {
+    e.preventDefault(); e.stopPropagation()
+    setContextMenu({ type, target, x: e.clientX, y: e.clientY })
   }
 
   function handleCreate(e) {
     e.preventDefault()
     const name = newFileName.trim()
     if (!name) return
-    onFileCreate(name, activeFolder)
+    onFileSelect.bind(null) // noop just to use
+    startNewFile(name, newFileMode?.folder || '')
     setNewFileName('')
-    setShowNewInput(false)
+    setNewFileMode(null)
   }
 
   function handleCreateFolder(e) {
     e.preventDefault()
     const name = newFolderName.trim()
     if (!name) return
-    onFolderCreate(name, activeFolder)
-    if (activeFolder) {
-      setExpanded(prev => { const n = new Set(prev); n.add(activeFolder); return n })
+    startNewFolder(name, newFolderMode?.folder || '')
+    if (newFolderMode?.folder) {
+      setExpandedFolders(prev => { const n = new Set(prev); n.add(newFolderMode.folder); return n })
     }
     setNewFolderName('')
-    setShowNewFolderInput(false)
-  }
-
-  function openContextMenu(e, type, target) {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ type, target, x: e.clientX, y: e.clientY })
-  }
-
-  function startRenameFile(file) {
-    setRenameTarget({ type: 'file', id: file.path, value: file.name.replace(/\.md$/, ''), original: file })
-    setTimeout(() => renameInputRef.current?.select(), 0)
-  }
-
-  function startRenameFolder(node) {
-    setRenameTarget({ type: 'folder', id: node.key, value: node.name, original: node })
-    setTimeout(() => renameInputRef.current?.select(), 0)
-  }
-
-  function commitRename() {
-    if (!renameTarget) return
-    const { type, original, value } = renameTarget
-    setRenameTarget(null)
-    if (!value.trim()) return
-    if (type === 'file') {
-      if (value.trim() === original.name.replace(/\.md$/, '')) return
-      onFileRename(original, value)
-    } else {
-      if (value.trim() === original.name) return
-      onFolderRename(original.key, value)
-    }
-  }
-
-  function cancelRename() {
-    setRenameTarget(null)
+    setNewFolderMode(null)
   }
 
   function handleDragStart(e, file) {
     setDragFile(file)
     e.dataTransfer.effectAllowed = 'move'
   }
+  function handleDragEnd() { setDragFile(null); setDropTarget(null) }
 
-  function handleDragEnd() {
-    setDragFile(null)
-    setDropTarget(null)
+  function isExternalFileDrag(e) {
+    return Array.from(e.dataTransfer?.types || []).includes('Files')
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function uploadDroppedFiles(fileList, subFolder = '') {
+    if (!isNotes && fileList?.length) {
+      for (const f of fileList) {
+        try {
+          const base64 = await readFileAsBase64(f)
+          await onUploadBinary(source.id, f.name, base64, subFolder)
+        } catch (err) {
+          console.error('Upload failed for', f.name, err)
+        }
+      }
+    } else if (isNotes && fileList?.length) {
+      // Only allow .md drops into notes-kind sections
+      for (const f of fileList) {
+        if (!f.name.toLowerCase().endsWith('.md')) continue
+        try {
+          const base64 = await readFileAsBase64(f)
+          await onUploadBinary(source.id, f.name, base64, subFolder)
+        } catch (err) {
+          console.error('Upload failed for', f.name, err)
+        }
+      }
+    }
   }
 
   function handleDrop(e, folderKey) {
-    e.preventDefault()
-    e.stopPropagation()
+    e.preventDefault(); e.stopPropagation()
+    setDropTarget(null)
+    // External OS drop → upload files
+    const files = Array.from(e.dataTransfer?.files || [])
+    if (files.length > 0) {
+      uploadDroppedFiles(files, folderKey ?? '')
+      return
+    }
+    // Internal drag → move
     if (!dragFile) return
     setDragFile(null)
-    setDropTarget(null)
     const currentFolder = dragFile.relativePath?.includes('/')
       ? dragFile.relativePath.split('/').slice(0, -1).join('/')
       : ''
     if ((folderKey ?? '') === currentFolder) return
-    onFileMove(dragFile, folderKey ?? '')
+    onFileMove(dragFile, source.id, folderKey ?? '')
+  }
+
+  function toggleFolder(key) {
+    setExpandedFolders(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  function onUploadClick(folder = '') {
+    onOpenUpload?.(folder)
   }
 
   function renderTree(nodes, depth = 0) {
     return nodes.map(node => {
-      const indent = 8 + depth * 26
-
+      const indent = 8 + depth * 22
       if (node.type === 'folder') {
-        const isOpen = expanded.has(node.key)
+        const open = expandedFolders.has(node.key)
         const isDropOver = dragFile && dropTarget === node.key
         return (
           <div
             key={node.key}
             className={isDropOver ? 'drop-target' : ''}
-            onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dragFile) setDropTarget(node.key) }}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dragFile || isExternalFileDrag(e)) setDropTarget(node.key) }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t === node.key ? null : t) }}
             onDrop={e => handleDrop(e, node.key)}
           >
@@ -377,9 +283,9 @@ export default function Sidebar({
               onClick={() => toggleFolder(node.key)}
               onContextMenu={e => openContextMenu(e, 'folder', { key: node.key, name: node.name })}
             >
-              <span className="folder-arrow">{isOpen ? '▾' : '▸'}</span>
+              <span className="folder-arrow">{open ? '▾' : '▸'}</span>
               <span className="folder-icon">
-                {isOpen ? (
+                {open ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2"/>
                     <path d="M3 9h17l-2.5 9a2 2 0 0 1-2 1.5H5a2 2 0 0 1-2-2V9z"/>
@@ -390,7 +296,7 @@ export default function Sidebar({
                   </svg>
                 )}
               </span>
-              {renameTarget?.type === 'folder' && renameTarget.id === node.key ? (
+              {renameTarget?.type === 'folder' && renameTarget.id === node.key && renameTarget.sourceId === source.id ? (
                 <input
                   ref={renameInputRef}
                   className="rename-input"
@@ -408,11 +314,11 @@ export default function Sidebar({
                 <span className="folder-label">{node.name}</span>
               )}
             </div>
-            {isOpen && renderTree(node.children, depth + 1)}
+            {open && renderTree(node.children, depth + 1)}
           </div>
         )
       }
-
+      const labelText = isNotes ? node.name.replace(/\.md$/, '') : node.name
       return (
         <div
           key={node.path}
@@ -421,10 +327,10 @@ export default function Sidebar({
           draggable
           onDragStart={e => handleDragStart(e, node)}
           onDragEnd={handleDragEnd}
-          onClick={() => onFileSelect(node)}
+          onClick={() => onFileSelect(node, source.id)}
           onContextMenu={e => openContextMenu(e, 'file', node)}
         >
-          <span className="file-icon">📄</span>
+          <span className="file-icon">{isNotes ? '📄' : fileIconFor(node.name)}</span>
           {renameTarget?.type === 'file' && renameTarget.id === node.path ? (
             <input
               ref={renameInputRef}
@@ -440,221 +346,139 @@ export default function Sidebar({
               autoFocus
             />
           ) : (
-            <span className="file-label">{node.name.replace(/\.md$/, '')}</span>
+            <span className="file-label">{labelText}</span>
           )}
         </div>
       )
     })
   }
 
-  const allCategories = useMemo(() => {
-    const set = new Set()
-    for (const cats of Object.values(fileCategories || {})) {
-      for (const c of cats) set.add(c)
-    }
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [fileCategories])
-
-  const filteredFiles = useMemo(() => {
-    if (activeCategories.size === 0) return files
-    return files.filter(f => {
-      if (f.name === '.gitkeep') return true // keep folder structure visible
-      const cats = fileCategories?.[f.path] || []
-      return cats.some(c => activeCategories.has(c))
-    })
-  }, [files, fileCategories, activeCategories])
-
-  const tree = buildTree(filteredFiles)
-
-  function toggleCategory(cat) {
-    setActiveCategories(prev => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
-
-  const sidebarStyle = collapsed
-    ? { width: 0, minWidth: 0, overflow: 'hidden' }
-    : { width, minWidth: width }
-
   return (
-    <>
-      {collapsed && (
-        <button className="sidebar-expand-tab" onClick={toggleCollapse} title="Expand sidebar">
-          ›
-        </button>
-      )}
-    <aside className="sidebar" style={sidebarStyle}>
-      <div className="sidebar-header">
-        {searchMode ? (
-          <input
-            ref={searchRef}
-            className="search-input"
-            type="text"
-            placeholder="Search notes…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Escape' && closeSearch()}
-          />
-        ) : (
-          <span className="brand">QNote</span>
-        )}
-        <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
-          {!searchMode && (
-            <button className="btn-icon" onClick={openSearch} title="Search">
-              ⌕
-            </button>
-          )}
-          {!searchMode && (
+    <div className="source-section">
+      <div
+        className="source-section-header"
+        onClick={() => onToggleOpen(source.id)}
+        onContextMenu={e => openContextMenu(e, 'root')}
+      >
+        <span className="source-section-arrow">{isOpen ? '▾' : '▸'}</span>
+        <span className="source-section-name">{source.name}</span>
+        <span className="source-section-kind">{source.kind === 'files' ? 'files' : 'notes'}</span>
+        <span style={{ flex: 1 }} />
+        {isOpen && (
+          <>
             <button
               className="btn-icon"
-              onClick={() => setShowNewInput(v => !v)}
-              title="New note"
-            >
-              +
-            </button>
-          )}
-          {searchMode ? (
-            <button className="btn-icon" onClick={closeSearch} title="Close search">
-              ×
-            </button>
-          ) : (
-            <button className="btn-icon" onClick={toggleCollapse} title="Collapse sidebar">
-              ‹
-            </button>
-          )}
-        </div>
-      </div>
-
-      {!searchMode && showNewInput && (
-        <form className="new-file-form" onSubmit={handleCreate}>
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder={activeFolder ? `${activeFolder}/filename.md` : 'filename.md'}
-            value={newFileName}
-            onChange={e => setNewFileName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Escape') {
-                setShowNewInput(false)
-                setNewFileName('')
-              }
-            }}
-          />
-        </form>
-      )}
-
-      {!searchMode && showNewFolderInput && (
-        <form className="new-file-form" onSubmit={handleCreateFolder}>
-          <input
-            ref={folderInputRef}
-            type="text"
-            placeholder={activeFolder ? `New folder in ${activeFolder}` : 'New folder name'}
-            value={newFolderName}
-            onChange={e => setNewFolderName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Escape') {
-                setShowNewFolderInput(false)
-                setNewFolderName('')
-              }
-            }}
-          />
-        </form>
-      )}
-
-      {!searchMode && allCategories.length > 0 && (
-        <div className="category-filter">
-          {allCategories.map(c => (
+              title={`Upload to ${source.name}`}
+              onClick={e => { e.stopPropagation(); onUploadClick('') }}
+            >↑</button>
             <button
-              key={c}
-              type="button"
-              className={`filter-chip${activeCategories.has(c) ? ' is-active' : ''}`}
-              onClick={() => toggleCategory(c)}
-            >{c}</button>
-          ))}
-          {activeCategories.size > 0 && (
+              className="btn-icon"
+              title="New folder"
+              onClick={e => { e.stopPropagation(); setNewFolderMode({ folder: '' }); setNewFileMode(null) }}
+            >+▦</button>
             <button
-              type="button"
-              className="filter-chip filter-chip-clear"
-              onClick={() => setActiveCategories(new Set())}
-              title="Clear filters"
-            >× clear</button>
-          )}
-        </div>
-      )}
-
-      <div
-        className={`file-list${dragFile && dropTarget === null ? ' drop-target-root' : ''}`}
-        ref={fileListRef}
-        onDragOver={e => { e.preventDefault(); if (dragFile) setDropTarget(null) }}
-        onDrop={e => handleDrop(e, null)}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t) }}
-        onContextMenu={e => {
-          if (e.target.closest('.file-item') || e.target.closest('.folder-item')) return
-          openContextMenu(e, 'root')
-        }}
-      >
-        {searchMode ? (
-          searchQuery.trim() === '' ? (
-            <div className="hint">Type to search…</div>
-          ) : searchPending ? (
-            <div className="hint">Searching…</div>
-          ) : searchResults.length === 0 ? (
-            <div className="hint">No results</div>
-          ) : searchResults.map(r => (
-            <div
-              key={r.path}
-              className={`search-result ${activeFile?.path === r.path ? 'active' : ''}`}
-              onClick={() => {
-                onFileSelect(r)
-                const keys = parentFolderKeys(r.relativePath)
-                if (keys.length) {
-                  setExpanded(prev => {
-                    const next = new Set(prev)
-                    keys.forEach(k => next.add(k))
-                    return next
-                  })
-                }
-                closeSearch()
-              }}
-            >
-              <div className="search-result-title">
-                {highlight(r.name.replace(/\.md$/, ''), searchQuery)}
-              </div>
-              {r.snippet && (
-                <div className="search-result-snippet">
-                  {highlight(r.snippet, searchQuery)}
-                </div>
-              )}
-            </div>
-          ))
-        ) : (
-          <>
-            {loading && files.length === 0 && <div className="hint">Loading…</div>}
-            {!loading && files.length === 0 && <div className="hint">No notes yet</div>}
-            {renderTree(tree)}
+              className="btn-icon"
+              title={source.kind === 'files' ? 'New file' : 'New note'}
+              onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
+            >+</button>
           </>
         )}
       </div>
 
-      <div className="sidebar-resize-handle" onMouseDown={startResize} />
+      {isOpen && (
+        <>
+          {newFileMode && (
+            <form className="new-file-form" onSubmit={handleCreate}>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={isNotes ? 'filename.md' : 'filename.ext'}
+                value={newFileName}
+                onChange={e => setNewFileName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { setNewFileMode(null); setNewFileName('') }
+                }}
+                onBlur={() => { if (!newFileName.trim()) setNewFileMode(null) }}
+              />
+            </form>
+          )}
+          {newFolderMode && (
+            <form className="new-file-form" onSubmit={handleCreateFolder}>
+              <input
+                ref={folderInputRef}
+                type="text"
+                placeholder="New folder name"
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { setNewFolderMode(null); setNewFolderName('') }
+                }}
+                onBlur={() => { if (!newFolderName.trim()) setNewFolderMode(null) }}
+              />
+            </form>
+          )}
 
-      <div className="sidebar-footer">
-        <button className="btn-icon" onClick={onSettingsOpen} title="Settings">
-          ⚙
-        </button>
-        <button
-          className="sidebar-sync"
-          onClick={onSync}
-          disabled={syncing}
-          title={lastSync ? `Last synced ${new Date(lastSync).toLocaleTimeString()} — click to sync now` : 'Sync now'}
-        >
-          <span className={`sync-icon${syncing ? ' is-spinning' : ''}`}>↺</span>
-          <span className="sync-label">{lastSync ? relativeTime(lastSync) : 'sync'}</span>
-        </button>
-      </div>
+          {isNotes && allCategories.length > 0 && (
+            <div className="category-filter">
+              {allCategories.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`filter-chip${activeCategories.has(c) ? ' is-active' : ''}`}
+                  onClick={() => toggleCategory(c)}
+                >{c}</button>
+              ))}
+              {activeCategories.size > 0 && (
+                <button
+                  type="button"
+                  className="filter-chip filter-chip-clear"
+                  onClick={clearCategories}
+                  title="Clear filters"
+                >× clear</button>
+              )}
+            </div>
+          )}
+
+          <div
+            className="source-tree"
+            onDragOver={e => {
+              if (dragFile || isExternalFileDrag(e)) {
+                e.preventDefault()
+                if (!e.target.closest('.folder-item') && !e.target.closest('.source-root-row')) setDropTarget(null)
+              }
+            }}
+            onDrop={e => {
+              if (e.target.closest('.folder-item') || e.target.closest('.source-root-row')) return
+              handleDrop(e, null)
+            }}
+            onContextMenu={e => {
+              if (e.target.closest('.file-item') || e.target.closest('.folder-item')) return
+              openContextMenu(e, 'root')
+            }}
+          >
+            <div
+              className={`source-root-row${dropTarget === '__root__' ? ' drop-over' : ''}`}
+              onDragOver={e => {
+                if (dragFile || isExternalFileDrag(e)) { e.preventDefault(); e.stopPropagation(); setDropTarget('__root__') }
+              }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(t => t === '__root__' ? null : t) }}
+              onDrop={e => { setDropTarget(null); handleDrop(e, null) }}
+              title={isNotes ? 'Drop .md files here to upload to root' : 'Drop files here to upload to root'}
+            >
+              <span className="folder-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+                </svg>
+              </span>
+              <span className="folder-label">{source.folder || '(repo root)'}</span>
+            </div>
+            {files.length === 0 && (
+              <div className="hint">{source.kind === 'files' ? 'No files yet' : 'No notes yet'}</div>
+            )}
+            {renderTree(tree)}
+          </div>
+        </>
+      )}
 
       {contextMenu && (
         <div
@@ -665,65 +489,427 @@ export default function Sidebar({
           {contextMenu.type === 'root' && (
             <>
               <button className="context-menu-item" onClick={() => {
-                setActiveFolder('')
-                setShowNewInput(true)
-                setShowNewFolderInput(false)
-                setContextMenu(null)
-              }}>New file</button>
+                setNewFileMode({ folder: '' }); setNewFolderMode(null); setContextMenu(null)
+              }}>New {source.kind === 'files' ? 'file' : 'note'}</button>
               <button className="context-menu-item" onClick={() => {
-                setActiveFolder('')
-                setShowNewFolderInput(true)
-                setShowNewInput(false)
-                setContextMenu(null)
+                setNewFolderMode({ folder: '' }); setNewFileMode(null); setContextMenu(null)
               }}>New folder</button>
+              <button className="context-menu-item" onClick={() => {
+                onUploadClick(''); setContextMenu(null)
+              }}>Upload {isNotes ? 'notes' : 'files'}…</button>
             </>
           )}
-
           {contextMenu.type === 'folder' && (
             <>
               <button className="context-menu-item" onClick={() => {
-                setActiveFolder(contextMenu.target.key)
-                setExpanded(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
-                setShowNewInput(true)
-                setShowNewFolderInput(false)
+                setNewFileMode({ folder: contextMenu.target.key })
+                setNewFolderMode(null)
+                setExpandedFolders(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
                 setContextMenu(null)
-              }}>New file in "{contextMenu.target.name}"</button>
+              }}>New {source.kind === 'files' ? 'file' : 'note'} in "{contextMenu.target.name}"</button>
               <button className="context-menu-item" onClick={() => {
-                setActiveFolder(contextMenu.target.key)
-                setExpanded(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
-                setShowNewFolderInput(true)
-                setShowNewInput(false)
+                setNewFolderMode({ folder: contextMenu.target.key })
+                setNewFileMode(null)
+                setExpandedFolders(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
                 setContextMenu(null)
               }}>New folder in "{contextMenu.target.name}"</button>
+              <button className="context-menu-item" onClick={() => {
+                onUploadClick(contextMenu.target.key); setContextMenu(null)
+              }}>Upload {isNotes ? 'notes' : 'files'} into "{contextMenu.target.name}"…</button>
               <div className="context-menu-sep" />
               <button className="context-menu-item" onClick={() => {
-                startRenameFolder(contextMenu.target)
+                startRenameFolder(source.id, { key: contextMenu.target.key, name: contextMenu.target.name })
                 setContextMenu(null)
               }}>Rename folder</button>
               <button className="context-menu-item context-menu-danger" onClick={() => {
-                onRequestDeleteFolder(contextMenu.target.key, contextMenu.target.name)
+                onRequestDeleteFolder(source.id, contextMenu.target.key, contextMenu.target.name)
                 setContextMenu(null)
               }}>Delete folder</button>
             </>
           )}
-
           {contextMenu.type === 'file' && (
             <>
               <button className="context-menu-item" onClick={() => {
-                startRenameFile(contextMenu.target)
+                startRenameFile(source.id, contextMenu.target)
                 setContextMenu(null)
               }}>Rename</button>
               <div className="context-menu-sep" />
               <button className="context-menu-item context-menu-danger" onClick={() => {
-                onRequestDeleteFile(contextMenu.target)
+                onRequestDeleteFile(contextMenu.target, source.id)
                 setContextMenu(null)
-              }}>Delete "{contextMenu.target.name.replace(/\.md$/, '')}"</button>
+              }}>Delete "{isNotes ? contextMenu.target.name.replace(/\.md$/, '') : contextMenu.target.name}"</button>
             </>
           )}
         </div>
       )}
+    </div>
+  )
+}
 
-    </aside>
+function fileIconFor(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  if (['png','jpg','jpeg','gif','svg','webp','bmp','ico'].includes(ext)) return '🖼'
+  if (['mp4','mov','webm','avi','mkv'].includes(ext)) return '🎬'
+  if (['mp3','wav','ogg','m4a','flac'].includes(ext)) return '♪'
+  if (['pdf'].includes(ext)) return '📕'
+  if (['zip','tar','gz','7z','rar'].includes(ext)) return '🗜'
+  if (['doc','docx'].includes(ext)) return '📘'
+  if (['xls','xlsx','csv'].includes(ext)) return '📊'
+  if (['ppt','pptx'].includes(ext)) return '📙'
+  return '📄'
+}
+
+// ── Main Sidebar ─────────────────────────────────────────────────────────────
+export default function Sidebar({
+  sources,
+  filesBySource,
+  categoriesBySource,
+  activeFile,
+  loading,
+  onFileSelect,
+  onFileCreate,
+  onFolderCreate,
+  onFileMove,
+  onFileRename,
+  onFolderRename,
+  onUploadBinary,
+  onRequestDeleteFile,
+  onRequestDeleteFolder,
+  onSettingsOpen,
+  onSync,
+  syncing,
+  lastSync,
+}) {
+  const [width, setWidth] = useState(() => {
+    const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10)
+    return saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH
+  })
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
+  const [uploadCtx, setUploadCtx] = useState(null) // { source, folder }
+
+  function openUpload(source, folder = '') {
+    setUploadCtx({ source, folder })
+  }
+
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(SECTIONS_COLLAPSED_KEY) || 'null')
+      if (stored && typeof stored === 'object') return new Set(stored.open || [])
+    } catch {}
+    return new Set(sources.map(s => s.id))
+  })
+
+  // Make sure newly-added sources start expanded
+  useEffect(() => {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      let changed = false
+      for (const s of sources) {
+        if (!prev.has(s.id) && !localStorage.getItem(SECTIONS_COLLAPSED_KEY + ':' + s.id + ':seen')) {
+          next.add(s.id)
+          localStorage.setItem(SECTIONS_COLLAPSED_KEY + ':' + s.id + ':seen', '1')
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sources])
+
+  function toggleSection(id) {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      try { localStorage.setItem(SECTIONS_COLLAPSED_KEY, JSON.stringify({ open: [...next] })) } catch {}
+      return next
+    })
+  }
+
+  // ── Search across all cached files ─────────────────────────────────────────
+  const [searchMode, setSearchMode] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchPending, setSearchPending] = useState(false)
+  const searchRef = useRef(null)
+
+  useEffect(() => { if (searchMode) searchRef.current?.focus() }, [searchMode])
+
+  useEffect(() => {
+    if (!searchMode || !searchQuery.trim()) { setSearchResults([]); return }
+    setSearchPending(true)
+    const timer = setTimeout(async () => {
+      const results = await window.api.github.search(searchQuery)
+      setSearchResults(results)
+      setSearchPending(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery, searchMode])
+
+  function openSearch() { setSearchMode(true) }
+  function closeSearch() { setSearchMode(false); setSearchQuery(''); setSearchResults([]) }
+
+  useEffect(() => {
+    const onKey = e => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.key === 'f') { e.preventDefault(); openSearch() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // ── Per-section UI state ───────────────────────────────────────────────────
+  const [perSection, setPerSection] = useState({}) // { [sourceId]: { newFileMode, newFolderMode, expandedFolders, activeCategories } }
+
+  const DEFAULT_SEC = { newFileMode: null, newFolderMode: null, expandedFolders: new Set(), activeCategories: new Set() }
+  function getSec(id) {
+    return perSection[id] || DEFAULT_SEC
+  }
+  function setSec(id, patch) {
+    setPerSection(prev => ({ ...prev, [id]: { ...(prev[id] || DEFAULT_SEC), ...patch } }))
+  }
+
+  // ── Rename target (cross-section) ──────────────────────────────────────────
+  const [renameTarget, setRenameTarget] = useState(null) // { type, id, sourceId, value, original }
+  const renameInputRef = useRef(null)
+
+  function startRenameFile(sourceId, file) {
+    const src = sources.find(s => s.id === sourceId)
+    const isNotes = src?.kind === 'notes'
+    const value = isNotes ? file.name.replace(/\.md$/, '') : file.name
+    setRenameTarget({ type: 'file', id: file.path, sourceId, value, original: file })
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+  function startRenameFolder(sourceId, node) {
+    setRenameTarget({ type: 'folder', id: node.key, sourceId, value: node.name, original: node })
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+  function commitRename() {
+    if (!renameTarget) return
+    const { type, sourceId, original, value } = renameTarget
+    setRenameTarget(null)
+    if (!value.trim()) return
+    if (type === 'file') {
+      const src = sources.find(s => s.id === sourceId)
+      const baseName = src?.kind === 'notes' ? original.name.replace(/\.md$/, '') : original.name
+      if (value.trim() === baseName) return
+      onFileRename(original, sourceId, value)
+    } else {
+      if (value.trim() === original.name) return
+      onFolderRename(sourceId, original.key, value)
+    }
+  }
+  function cancelRename() { setRenameTarget(null) }
+
+  // ── Resize ─────────────────────────────────────────────────────────────────
+  const isResizing = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  const onMouseMove = useCallback((e) => {
+    if (!isResizing.current) return
+    const delta = e.clientX - startX.current
+    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
+    setWidth(next)
+  }, [])
+  const onMouseUp = useCallback(() => {
+    if (!isResizing.current) return
+    isResizing.current = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setWidth(prev => { localStorage.setItem(STORAGE_KEY, String(prev)); return prev })
+  }, [])
+  useEffect(() => {
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [onMouseMove, onMouseUp])
+  function startResize(e) {
+    if (collapsed) return
+    isResizing.current = true
+    startX.current = e.clientX
+    startWidth.current = width
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+  function toggleCollapse() {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem(COLLAPSED_KEY, String(next))
+      return next
+    })
+  }
+
+  // Tick state for relative time refresh
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Auto-expand parent folders when active file changes
+  useEffect(() => {
+    if (!activeFile?.sourceId) return
+    const keys = parentFolderKeys(activeFile.relativePath)
+    if (!keys.length) return
+    setSec(activeFile.sourceId, {
+      expandedFolders: new Set([...(getSec(activeFile.sourceId).expandedFolders), ...keys]),
+    })
+    // also expand the section
+    setOpenSections(prev => prev.has(activeFile.sourceId) ? prev : new Set([...prev, activeFile.sourceId]))
+  }, [activeFile?.path])
+
+  const sidebarStyle = collapsed
+    ? { width: 0, minWidth: 0, overflow: 'hidden' }
+    : { width, minWidth: width }
+
+  return (
+    <>
+      {collapsed && (
+        <button className="sidebar-expand-tab" onClick={toggleCollapse} title="Expand sidebar">›</button>
+      )}
+      <aside className="sidebar" style={sidebarStyle}>
+        <div className="sidebar-header">
+          {searchMode ? (
+            <input
+              ref={searchRef}
+              className="search-input"
+              type="text"
+              placeholder="Search…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Escape' && closeSearch()}
+            />
+          ) : (
+            <span className="brand">QNote</span>
+          )}
+          <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+            {!searchMode && (
+              <button className="btn-icon" onClick={openSearch} title="Search">⌕</button>
+            )}
+            {searchMode ? (
+              <button className="btn-icon" onClick={closeSearch} title="Close search">×</button>
+            ) : (
+              <button className="btn-icon" onClick={toggleCollapse} title="Collapse sidebar">‹</button>
+            )}
+          </div>
+        </div>
+
+        <div className="sidebar-scroll">
+          {searchMode ? (
+            <div className="file-list">
+              {searchQuery.trim() === '' ? (
+                <div className="hint">Type to search…</div>
+              ) : searchPending ? (
+                <div className="hint">Searching…</div>
+              ) : searchResults.length === 0 ? (
+                <div className="hint">No results</div>
+              ) : searchResults.map(r => {
+                // Find which source this result belongs to
+                const src = sources.find(s => {
+                  const folder = (s.folder || '').replace(/^\/|\/$/g, '')
+                  return folder ? r.path.startsWith(folder + '/') : true
+                }) || sources[0]
+                return (
+                  <div
+                    key={r.path}
+                    className={`search-result ${activeFile?.path === r.path ? 'active' : ''}`}
+                    onClick={() => { onFileSelect(r, src.id); closeSearch() }}
+                  >
+                    <div className="search-result-title">
+                      {highlight(r.name.replace(/\.md$/, ''), searchQuery)}
+                    </div>
+                    {r.snippet && (
+                      <div className="search-result-snippet">{highlight(r.snippet, searchQuery)}</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <>
+              {loading && Object.keys(filesBySource).length === 0 && <div className="hint">Loading…</div>}
+              {sources.map(src => {
+                const sec = getSec(src.id)
+                return (
+                  <SourceSection
+                    key={src.id}
+                    source={src}
+                    files={filesBySource[src.id] || []}
+                    categoriesByPath={categoriesBySource[src.id] || {}}
+                    isOpen={openSections.has(src.id)}
+                    onToggleOpen={toggleSection}
+                    activeFile={activeFile}
+                    onFileSelect={onFileSelect}
+                    onFileMove={onFileMove}
+                    onUploadBinary={onUploadBinary}
+                    onOpenUpload={(folder) => openUpload(src, folder)}
+                    startNewFile={(name, sub) => onFileCreate(name, src.id, sub)}
+                    startNewFolder={(name, parent) => onFolderCreate(name, src.id, parent)}
+                    startRenameFile={startRenameFile}
+                    startRenameFolder={startRenameFolder}
+                    onRequestDeleteFile={onRequestDeleteFile}
+                    onRequestDeleteFolder={onRequestDeleteFolder}
+                    newFileMode={sec.newFileMode}
+                    newFolderMode={sec.newFolderMode}
+                    setNewFileMode={mode => setSec(src.id, { newFileMode: mode })}
+                    setNewFolderMode={mode => setSec(src.id, { newFolderMode: mode })}
+                    renameTarget={renameTarget}
+                    setRenameTarget={setRenameTarget}
+                    renameInputRef={renameInputRef}
+                    commitRename={commitRename}
+                    cancelRename={cancelRename}
+                    expandedFolders={sec.expandedFolders}
+                    setExpandedFolders={fn => {
+                      setPerSection(prev => {
+                        const cur = (prev[src.id] || DEFAULT_SEC).expandedFolders
+                        const next = typeof fn === 'function' ? fn(cur) : fn
+                        return { ...prev, [src.id]: { ...(prev[src.id] || DEFAULT_SEC), expandedFolders: next } }
+                      })
+                    }}
+                    activeCategories={sec.activeCategories}
+                    toggleCategory={cat => {
+                      setPerSection(prev => {
+                        const sec = prev[src.id] || DEFAULT_SEC
+                        const cur = new Set(sec.activeCategories)
+                        if (cur.has(cat)) cur.delete(cat); else cur.add(cat)
+                        return { ...prev, [src.id]: { ...sec, activeCategories: cur } }
+                      })
+                    }}
+                    clearCategories={() => setSec(src.id, { activeCategories: new Set() })}
+                  />
+                )
+              })}
+            </>
+          )}
+        </div>
+
+        <div className="sidebar-resize-handle" onMouseDown={startResize} />
+
+        <div className="sidebar-footer">
+          <button className="btn-icon" onClick={onSettingsOpen} title="Settings">⚙</button>
+          <button
+            className="sidebar-sync"
+            onClick={onSync}
+            disabled={syncing}
+            title={lastSync ? `Last synced ${new Date(lastSync).toLocaleTimeString()} — click to sync now` : 'Sync now'}
+          >
+            <span className={`sync-icon${syncing ? ' is-spinning' : ''}`}>↺</span>
+            <span className="sync-label">{lastSync ? relativeTime(lastSync) : 'sync'}</span>
+          </button>
+        </div>
+      </aside>
+
+      {uploadCtx && (
+        <UploadModal
+          sourceName={uploadCtx.source.name}
+          sourceKind={uploadCtx.source.kind}
+          targetFolder={uploadCtx.folder}
+          onClose={() => setUploadCtx(null)}
+          onUpload={(name, base64, sub) => onUploadBinary(uploadCtx.source.id, name, base64, sub)}
+        />
+      )}
     </>
   )
 }

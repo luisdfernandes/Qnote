@@ -26,17 +26,26 @@ const FONTS = [
   { id: 'mono',    label: 'Monospace',      preview: 'Consolas, monospace' },
 ]
 
+function genId() {
+  return 'src_' + Math.random().toString(36).slice(2, 9)
+}
+
+function initialSources(cfg) {
+  if (Array.isArray(cfg?.sources) && cfg.sources.length > 0) return cfg.sources.map(s => ({ ...s }))
+  return [{ id: 'notes', name: 'Notes', folder: cfg?.folder ?? 'notes', kind: 'notes' }]
+}
+
 export default function Settings({ config, onSave, onClose, canClose }) {
   const [form, setForm] = useState({
     owner:  config?.owner  || '',
     repo:   config?.repo   || '',
-    folder: config?.folder ?? 'notes',
     branch: config?.branch || 'main',
     token:  config?.token  || '',
     theme:  config?.theme  || 'dark',
     accent: config?.accent || 'mint',
     font:   config?.font   || 'system',
     zoom:   config?.zoom   ?? 1,
+    sources: initialSources(config),
   })
   const [showToken, setShowToken] = useState(false)
   const [testState, setTestState] = useState(null)
@@ -93,7 +102,20 @@ export default function Settings({ config, onSave, onClose, canClose }) {
 
   function handleSubmit(e) {
     e.preventDefault()
-    onSave(form)
+    const cleanSources = form.sources
+      .map(s => ({
+        id: s.id || genId(),
+        name: (s.name || '').trim() || 'Untitled',
+        folder: (s.folder || '').replace(/^\/|\/$/g, ''),
+        kind: s.kind === 'files' ? 'files' : 'notes',
+      }))
+    // Ensure unique ids
+    const seen = new Set()
+    for (const s of cleanSources) {
+      while (seen.has(s.id)) s.id = genId()
+      seen.add(s.id)
+    }
+    onSave({ ...form, sources: cleanSources })
   }
 
   return (
@@ -123,18 +145,10 @@ export default function Settings({ config, onSave, onClose, canClose }) {
             </div>
           </div>
 
-          <div className="field-row">
-            <div className="field">
-              <label>Notes Folder</label>
-              <input type="text" value={form.folder} onChange={set('folder')}
-                placeholder="notes" />
-              <span className="hint">Leave empty for repo root</span>
-            </div>
-            <div className="field">
-              <label>Branch</label>
-              <input type="text" value={form.branch} onChange={set('branch')}
-                placeholder="main" />
-            </div>
+          <div className="field">
+            <label>Branch</label>
+            <input type="text" value={form.branch} onChange={set('branch')}
+              placeholder="main" />
           </div>
 
           <div className="field">
@@ -161,6 +175,109 @@ export default function Settings({ config, onSave, onClose, canClose }) {
               {testState.ok ? '✓' : '✗'} {testState.msg}
             </div>
           )}
+
+          {/* ── Sections / Folders ── */}
+          <div className="settings-section-label" style={{ marginTop: 24 }}>
+            Sections
+          </div>
+          <p className="hint" style={{ marginTop: -4, marginBottom: 8 }}>
+            Each section appears as a collapsible group in the sidebar. Notes sections show only <code>.md</code> files
+            with categories and the markdown editor. Files sections show any file type with upload, view, edit and delete.
+          </p>
+          <div className="sources-list">
+            {form.sources.map((src, idx) => (
+              <div key={src.id} className="source-row">
+                <input
+                  type="text"
+                  className="source-name-input"
+                  value={src.name}
+                  placeholder="Section name"
+                  onChange={e => {
+                    const v = e.target.value
+                    setForm(prev => ({
+                      ...prev,
+                      sources: prev.sources.map((s, i) => i === idx ? { ...s, name: v } : s),
+                    }))
+                  }}
+                />
+                <input
+                  type="text"
+                  className="source-folder-input"
+                  value={src.folder}
+                  placeholder="folder/path"
+                  onChange={e => {
+                    const v = e.target.value
+                    setForm(prev => ({
+                      ...prev,
+                      sources: prev.sources.map((s, i) => i === idx ? { ...s, folder: v } : s),
+                    }))
+                  }}
+                />
+                <select
+                  className="source-kind-select"
+                  value={src.kind}
+                  onChange={e => {
+                    const v = e.target.value
+                    setForm(prev => ({
+                      ...prev,
+                      sources: prev.sources.map((s, i) => i === idx ? { ...s, kind: v } : s),
+                    }))
+                  }}
+                >
+                  <option value="notes">Notes</option>
+                  <option value="files">Files</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Move up"
+                  disabled={idx === 0}
+                  onClick={() => {
+                    setForm(prev => {
+                      const next = [...prev.sources]
+                      ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+                      return { ...prev, sources: next }
+                    })
+                  }}
+                >↑</button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Move down"
+                  disabled={idx === form.sources.length - 1}
+                  onClick={() => {
+                    setForm(prev => {
+                      const next = [...prev.sources]
+                      ;[next[idx + 1], next[idx]] = [next[idx], next[idx + 1]]
+                      return { ...prev, sources: next }
+                    })
+                  }}
+                >↓</button>
+                <button
+                  type="button"
+                  className="btn-icon source-remove"
+                  title="Remove section"
+                  disabled={form.sources.length <= 1}
+                  onClick={() => {
+                    setForm(prev => ({
+                      ...prev,
+                      sources: prev.sources.filter((_, i) => i !== idx),
+                    }))
+                  }}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btn-ghost source-add"
+              onClick={() => {
+                setForm(prev => ({
+                  ...prev,
+                  sources: [...prev.sources, { id: genId(), name: 'New section', folder: '', kind: 'files' }],
+                }))
+              }}
+            >+ Add section</button>
+          </div>
 
           {/* ── Appearance ── */}
           <div className="settings-section-label" style={{ marginTop: 24 }}>
