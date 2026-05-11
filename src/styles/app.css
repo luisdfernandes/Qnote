@@ -1688,6 +1688,47 @@ body { user-select: none; }
   padding: 2px 0 6px 0;
 }
 
+.add-btn-group {
+  position: relative;
+  display: flex;
+}
+
+.add-btn-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  background: var(--bg-panel, var(--bg-sidebar));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 200;
+  min-width: 130px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.add-btn-group:hover .add-btn-menu {
+  display: block;
+}
+
+.add-btn-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.add-btn-menu-item:hover {
+  background: var(--bg-hover);
+}
+
 .source-root-row {
   display: flex;
   align-items: center;

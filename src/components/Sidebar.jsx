@@ -371,23 +371,36 @@ function SourceSection({
               title={`Upload to ${source.name}`}
               onClick={e => { e.stopPropagation(); onUploadClick('') }}
             >↑</button>
-            <button
-              className="btn-icon"
-              title="New folder"
-              onClick={e => { e.stopPropagation(); setNewFolderMode({ folder: '' }); setNewFileMode(null) }}
-            >+▦</button>
-            {isNotes && (
-              <button
-                className="btn-icon"
-                title="New diagram"
-                onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '', diagram: true }); setNewFolderMode(null) }}
-              >✎</button>
+            {isNotes ? (
+              <div className="add-btn-group" onClick={e => e.stopPropagation()}>
+                <button
+                  className="btn-icon"
+                  title="New note (hover for more)"
+                  onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
+                >+</button>
+                <div className="add-btn-menu">
+                  <button className="add-btn-menu-item" onClick={() => { setNewFolderMode({ folder: '' }); setNewFileMode(null) }}>
+                    New folder
+                  </button>
+                  <button className="add-btn-menu-item" onClick={() => { setNewFileMode({ folder: '', diagram: true }); setNewFolderMode(null) }}>
+                    New diagram
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  className="btn-icon"
+                  title="New folder"
+                  onClick={e => { e.stopPropagation(); setNewFolderMode({ folder: '' }); setNewFileMode(null) }}
+                >+▦</button>
+                <button
+                  className="btn-icon"
+                  title="New file"
+                  onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
+                >+</button>
+              </>
             )}
-            <button
-              className="btn-icon"
-              title={source.kind === 'files' ? 'New file' : 'New note'}
-              onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
-            >+</button>
           </>
         )}
       </div>
