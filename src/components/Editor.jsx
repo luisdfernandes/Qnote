@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react'
+import { Extension } from '@tiptap/core'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
@@ -17,6 +20,51 @@ import iconSvg from '../../assets/icon.svg'
 const lowlight = createLowlight(common)
 
 marked.use({ gfm: true, breaks: true })
+
+// ── Wikilink decoration plugin ────────────────────────────────────────────────
+const WikilinkDecoration = Extension.create({
+  name: 'wikilinkDecoration',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('wikilinkDecoration'),
+        props: {
+          decorations(state) {
+            const decos = []
+            state.doc.descendants((node, pos) => {
+              if (!node.isText) return
+              const re = /\[\[[^\]]+\]\]/g
+              let m
+              re.lastIndex = 0
+              while ((m = re.exec(node.text)) !== null) {
+                decos.push(Decoration.inline(
+                  pos + m.index,
+                  pos + m.index + m[0].length,
+                  { class: 'wikilink-inline', 'data-note': m[0].slice(2, -2) },
+                ))
+              }
+            })
+            return DecorationSet.create(state.doc, decos)
+          },
+        },
+      }),
+    ]
+  },
+})
+
+// ── View-mode wikilink rendering (post-process marked HTML output) ────────────
+function renderWithWikilinks(md) {
+  const html = marked.parse(md || '')
+  // Replace [[...]] in the HTML output, leaving <pre>/<code> blocks untouched
+  return html.replace(
+    /(<(?:pre|code)\b[^>]*>[\s\S]*?<\/(?:pre|code)>)|\[\[([^\]]+)\]\]/gi,
+    (match, codeBlock, title) => {
+      if (codeBlock) return codeBlock
+      const safe = title.replace(/"/g, '&quot;')
+      return `<span class="wikilink-view" data-note="${safe}">[[${title}]]</span>`
+    },
+  )
+}
 
 const LANGUAGES = [
   { value: '',           label: 'Plain text' },
@@ -93,20 +141,17 @@ function FormatBar({ editor }) {
 
   return (
     <div className="format-bar">
-      {/* Text style */}
       <ToolBtn title="Bold (Ctrl+B)"   active={state.bold}   onClick={() => c.toggleBold().run()}><strong>B</strong></ToolBtn>
       <ToolBtn title="Italic (Ctrl+I)" active={state.italic} onClick={() => c.toggleItalic().run()}><em>I</em></ToolBtn>
       <ToolBtn title="Strikethrough"   active={state.strike} onClick={() => c.toggleStrike().run()}><s>S</s></ToolBtn>
       <ToolBtn title="Inline code"     active={state.code}   onClick={() => c.toggleCode().run()}>{'`'}</ToolBtn>
       <Sep />
 
-      {/* Headings */}
       <ToolBtn title="Heading 1" active={state.h1} onClick={() => c.toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
       <ToolBtn title="Heading 2" active={state.h2} onClick={() => c.toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
       <ToolBtn title="Heading 3" active={state.h3} onClick={() => c.toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
       <Sep />
 
-      {/* Blocks */}
       <ToolBtn title="Bullet list"   active={state.bulletList}  onClick={() => c.toggleBulletList().run()}>≡</ToolBtn>
       <ToolBtn title="Ordered list"  active={state.orderedList} onClick={() => c.toggleOrderedList().run()}>№</ToolBtn>
       <ToolBtn title="Task list"     active={state.taskList}    onClick={() => c.toggleTaskList().run()}>☑</ToolBtn>
@@ -132,7 +177,6 @@ function FormatBar({ editor }) {
       )}
       <Sep />
 
-      {/* Table */}
       {!state.table ? (
         <ToolBtn title="Insert table" active={false} onClick={() => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>⊞</ToolBtn>
       ) : (
@@ -146,7 +190,6 @@ function FormatBar({ editor }) {
       )}
       <Sep />
 
-      {/* Misc */}
       <ToolBtn title="Horizontal rule" active={false} onClick={() => c.setHorizontalRule().run()}>—</ToolBtn>
       <ToolBtn title="Undo (Ctrl+Z)"   active={false} disabled={!state.canUndo} onClick={() => c.undo().run()}>↩</ToolBtn>
       <ToolBtn title="Redo (Ctrl+Y)"   active={false} disabled={!state.canRedo} onClick={() => c.redo().run()}>↪</ToolBtn>
@@ -154,14 +197,47 @@ function FormatBar({ editor }) {
   )
 }
 
-function TiptapEditor({ content, onChange, onImageUpload }) {
+function TiptapEditor({ content, onChange, onImageUpload, allNotes, onWikilinkClick }) {
   const skipRef = useRef(false)
   const uploadRef = useRef(onImageUpload)
   const editorRef = useRef(null)
+  const allNotesRef = useRef(allNotes)
+  const onWikilinkClickRef = useRef(onWikilinkClick)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
 
   useEffect(() => { uploadRef.current = onImageUpload }, [onImageUpload])
+  useEffect(() => { allNotesRef.current = allNotes }, [allNotes])
+  useEffect(() => { onWikilinkClickRef.current = onWikilinkClick }, [onWikilinkClick])
+
+  // Autocomplete state — ref for stale-closure-safe callbacks, forceRender for UI
+  const suggest = useRef({ show: false, query: '', idx: 0, notes: [], pos: null })
+  const [, forceRender] = useState(0)
+
+  function patchSuggest(patch) {
+    Object.assign(suggest.current, patch)
+    forceRender(n => n + 1)
+  }
+  function closeSuggest() {
+    suggest.current = { show: false, query: '', idx: 0, notes: [], pos: null }
+    forceRender(n => n + 1)
+  }
+  function selectSuggestion(noteName) {
+    const editor = editorRef.current
+    if (!editor || !noteName) return
+    const { state } = editor
+    const { from } = state.selection
+    const $from = state.doc.resolve(from)
+    const textBefore = $from.parent.textContent.slice(0, $from.parentOffset)
+    const match = textBefore.match(/\[\[([^\]]*)$/)
+    if (match) {
+      editor.chain().focus()
+        .deleteRange({ from: from - match[0].length, to: from })
+        .insertContent(`[[${noteName}]]`)
+        .run()
+    }
+    closeSuggest()
+  }
 
   async function uploadAndInsert(base64, ext) {
     if (!uploadRef.current || !editorRef.current) return
@@ -208,30 +284,49 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
       TableRow,
       TableHeader,
       TableCell,
+      WikilinkDecoration,
     ],
     content: '',
     editorProps: {
+      handleClick(view, pos, event) {
+        const el = event.target.closest('[data-note]')
+        if (el?.dataset.note) {
+          onWikilinkClickRef.current?.(el.dataset.note)
+          return true
+        }
+        return false
+      },
+      handleKeyDown(view, event) {
+        const s = suggest.current
+        if (!s.show) return false
+        if (event.key === 'Escape') { closeSuggest(); return true }
+        if (event.key === 'ArrowDown') {
+          patchSuggest({ idx: Math.min(s.idx + 1, s.notes.length - 1) })
+          return true
+        }
+        if (event.key === 'ArrowUp') {
+          patchSuggest({ idx: Math.max(s.idx - 1, 0) })
+          return true
+        }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          if (s.notes[s.idx]) { selectSuggestion(s.notes[s.idx]); return true }
+        }
+        return false
+      },
       handlePaste(view, event) {
         if (!uploadRef.current) return false
-
         const cd = event.clipboardData
         const items = Array.from(cd?.items || [])
         const files = Array.from(cd?.files || [])
         const hasText = !!(cd?.getData?.('text/plain'))
-
-        // 1. Prefer DataTransfer image (works for most apps)
         let blob = null
         let mime = null
         const imageItem = items.find(i => i.type?.startsWith('image/'))
-        if (imageItem) {
-          blob = imageItem.getAsFile()
-          mime = imageItem.type
-        }
+        if (imageItem) { blob = imageItem.getAsFile(); mime = imageItem.type }
         if (!blob) {
           const imageFile = files.find(f => f.type?.startsWith('image/'))
           if (imageFile) { blob = imageFile; mime = imageFile.type }
         }
-
         if (blob) {
           const reader = new FileReader()
           reader.onload = () => {
@@ -242,25 +337,41 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
           reader.readAsDataURL(blob)
           return true
         }
-
-        // 2. Fallback: ask Electron's native clipboard (more reliable on Windows
-        //    for screenshots from Snipping Tool, Greenshot, browsers, etc.)
-        //    Skip if there is plain text — user is pasting text, not an image.
         if (!hasText && window.api?.clipboard?.readImage) {
           window.api.clipboard.readImage().then(base64 => {
             if (base64) uploadAndInsert(base64, 'png')
           }).catch(err => console.error('Clipboard image read failed:', err))
           return true
         }
-
         return false
       },
     },
     onUpdate: ({ editor }) => {
-      if (!skipRef.current) {
-        onChange(editor.storage.markdown.getMarkdown())
+      if (!skipRef.current) onChange(editor.storage.markdown.getMarkdown())
+
+      // Detect [[  trigger for autocomplete
+      const { state } = editor
+      const { from } = state.selection
+      const $from = state.doc.resolve(from)
+      const textBefore = $from.parent.textContent.slice(0, $from.parentOffset)
+      const match = textBefore.match(/\[\[([^\]]*)$/)
+
+      if (match) {
+        const query = match[1]
+        const all = allNotesRef.current || []
+        const filtered = query
+          ? all.filter(n => n.toLowerCase().includes(query.toLowerCase()))
+          : all
+        const notes = filtered.slice(0, 8)
+        if (notes.length > 0) {
+          const coords = editor.view.coordsAtPos(from)
+          patchSuggest({ show: true, query, idx: 0, notes, pos: { top: coords.bottom + 4, left: coords.left } })
+          return
+        }
       }
+      if (suggest.current.show) closeSuggest()
     },
+    onBlur() { closeSuggest() },
   })
 
   useEffect(() => {
@@ -272,6 +383,8 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
     editor.commands.focus('end')
   }, [editor])
 
+  const s = suggest.current
+
   return (
     <div className="editor-with-bar">
       <FormatBar editor={editor} />
@@ -282,11 +395,25 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
           <EditorContent editor={editor} className="tiptap-editor" />
         </div>
       </div>
+
+      {s.show && s.pos && (
+        <div className="wikilink-suggest" style={{ top: s.pos.top, left: s.pos.left }}>
+          {s.notes.map((name, i) => (
+            <div
+              key={name}
+              className={`wikilink-suggest-item${i === s.idx ? ' is-active' : ''}`}
+              onMouseDown={e => { e.preventDefault(); selectSuggestion(name) }}
+            >
+              {name}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-export default function Editor({ content, onChange, mode, activeFile, onImageUpload }) {
+export default function Editor({ content, onChange, mode, activeFile, onImageUpload, allNotes, backlinks, onWikilinkClick }) {
   const previewRef = useRef(null)
 
   useEffect(() => {
@@ -326,12 +453,37 @@ export default function Editor({ content, onChange, mode, activeFile, onImageUpl
           <div
             ref={previewRef}
             className="markdown-body"
-            dangerouslySetInnerHTML={{ __html: marked.parse(content || '') }}
+            onClick={e => {
+              const el = e.target.closest('[data-note]')
+              if (el?.dataset.note) onWikilinkClick?.(el.dataset.note)
+            }}
+            dangerouslySetInnerHTML={{ __html: renderWithWikilinks(content || '') }}
           />
+
+          {backlinks?.length > 0 && (
+            <div className="backlinks-section">
+              <div className="backlinks-header">
+                <span className="backlinks-icon">⬅</span>
+                <span className="backlinks-title">Backlinks</span>
+                <span className="backlinks-count">{backlinks.length}</span>
+              </div>
+              <div className="backlinks-list">
+                {backlinks.map(f => (
+                  <div
+                    key={f.path}
+                    className="backlink-item"
+                    onClick={() => onWikilinkClick?.(f.name.replace(/\.md$/, ''))}
+                  >
+                    {f.name.replace(/\.md$/, '')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
-  return <TiptapEditor key={activeFile.path} content={content} onChange={onChange} onImageUpload={onImageUpload} />
+  return <TiptapEditor key={activeFile.path} content={content} onChange={onChange} onImageUpload={onImageUpload} allNotes={allNotes} onWikilinkClick={onWikilinkClick} />
 }

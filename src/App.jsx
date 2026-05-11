@@ -181,6 +181,7 @@ export default function App() {
   const [offline, setOffline] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null) // { type, ... }
   const [lastSync, setLastSync] = useState(null)
+  const [backlinks, setBacklinks] = useState([])
 
   const isDirty =
     !!activeFile && (content !== savedContent ||
@@ -655,6 +656,40 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [saveFile, activeFile])
 
+  const allNoteNames = useMemo(() => {
+    const names = new Set()
+    for (const src of sources) {
+      if (src.kind !== 'notes') continue
+      for (const f of (filesBySource[src.id] || [])) {
+        if (f.name.endsWith('.md')) names.add(f.name.replace(/\.md$/, ''))
+      }
+    }
+    return [...names].sort()
+  }, [sources, filesBySource])
+
+  useEffect(() => {
+    if (!activeFile || activeFile.sourceKind !== 'notes' || !activeFile.name.endsWith('.md')) {
+      setBacklinks([])
+      return
+    }
+    const src = sources.find(s => s.id === activeFile.sourceId)
+    if (!src) return
+    window.api.github.getBacklinks({ folder: src.folder, title: activeFile.name.replace(/\.md$/, '') })
+      .then(setBacklinks)
+      .catch(() => setBacklinks([]))
+  }, [activeFile?.path])
+
+  function handleWikilinkClick(title) {
+    const titleLower = title.toLowerCase()
+    for (const src of sources) {
+      if (src.kind !== 'notes') continue
+      const file = (filesBySource[src.id] || []).find(
+        f => f.name.replace(/\.md$/, '').toLowerCase() === titleLower,
+      )
+      if (file) { openFile(file, src.id); return }
+    }
+  }
+
   const isNotesActive = activeFile?.sourceKind === 'notes'
   const isDiagram = isNotesActive && !!activeFile?.name?.endsWith('.excalidraw')
 
@@ -734,6 +769,9 @@ export default function App() {
             mode={mode}
             activeFile={activeFile}
             onImageUpload={uploadImage}
+            allNotes={allNoteNames}
+            backlinks={backlinks}
+            onWikilinkClick={handleWikilinkClick}
           />
         ) : activeFile ? (
           <FilesViewer
@@ -748,7 +786,7 @@ export default function App() {
             setError={setError}
           />
         ) : (
-          <Editor activeFile={null} mode="view" content="" onChange={() => {}} onImageUpload={() => {}} />
+          <Editor activeFile={null} mode="view" content="" onChange={() => {}} onImageUpload={() => {}} allNotes={allNoteNames} backlinks={[]} onWikilinkClick={handleWikilinkClick} />
         )}
       </div>
 

@@ -313,6 +313,17 @@ ipcMain.handle('github:loadAllMetadata', async (_, folder) => {
   return result
 })
 
+ipcMain.handle('github:getBacklinks', async (_, { folder, title }) => {
+  const cache = getCache()
+  const folderKey = (folder || '').replace(/^\/|\/$/g, '')
+  const files = cache.filesByFolder?.[folderKey] || []
+  const pattern = `[[${title}]]`
+  return files.filter(f =>
+    f.path.endsWith('.md') &&
+    cache.contents?.[f.path]?.content?.includes(pattern)
+  )
+})
+
 ipcMain.handle('github:search', async (_, query) => {
   const q = (query || '').trim().toLowerCase()
   if (!q) return []

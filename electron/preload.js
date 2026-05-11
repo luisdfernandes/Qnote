@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     listFiles: (opts) => ipcRenderer.invoke('github:listFiles', opts),
     loadAllMetadata: (folder) => ipcRenderer.invoke('github:loadAllMetadata', folder),
     search: (query) => ipcRenderer.invoke('github:search', query),
+    getBacklinks: (args) => ipcRenderer.invoke('github:getBacklinks', args),
     getFile: (filePath) => ipcRenderer.invoke('github:getFile', filePath),
     getFileBinary: (filePath) => ipcRenderer.invoke('github:getFileBinary', filePath),
     saveFile: (data) => ipcRenderer.invoke('github:saveFile', data),

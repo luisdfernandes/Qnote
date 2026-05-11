@@ -1884,3 +1884,91 @@ body { user-select: none; }
   color: var(--text-dim);
   font-size: 14px;
 }
+
+/* ── Wikilinks ───────────────────────────────────────────────────────────── */
+.wikilink-inline {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-dim);
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition: background 0.1s;
+}
+.wikilink-inline:hover { background: rgba(78,201,176,0.12); }
+
+.wikilink-view {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-dim);
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition: background 0.1s;
+}
+.wikilink-view:hover { background: rgba(78,201,176,0.12); }
+
+/* ── Wikilink autocomplete dropdown ─────────────────────────────────────── */
+.wikilink-suggest {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-modal);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  min-width: 200px;
+  max-width: 320px;
+  overflow: hidden;
+}
+.wikilink-suggest-item {
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.wikilink-suggest-item:hover,
+.wikilink-suggest-item.is-active {
+  background: var(--bg-active);
+  color: var(--accent);
+}
+
+/* ── Backlinks panel ─────────────────────────────────────────────────────── */
+.backlinks-section {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.backlinks-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.backlinks-icon { color: var(--text-dim); font-size: 13px; }
+.backlinks-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.backlinks-count {
+  font-size: 11px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.backlinks-list { display: flex; flex-direction: column; gap: 2px; }
+.backlink-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius);
+  border-left: 2px solid var(--accent-dim);
+  background: transparent;
+  transition: background 0.1s;
+}
+.backlink-item:hover { background: var(--bg-hover); }
