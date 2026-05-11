@@ -184,7 +184,21 @@ function TiptapEditor({ content, onChange, onImageUpload }) {
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
-      Image.configure({ inline: false, allowBase64: false }),
+      Image.extend({
+        addStorage() {
+          return {
+            markdown: {
+              serialize(state, node) {
+                state.write('![' + (node.attrs.alt || '') + '](' +
+                  node.attrs.src.replace(/[()]/g, '\\$&') +
+                  (node.attrs.title ? ' "' + node.attrs.title.replace(/"/g, '\\"') + '"' : '') + ')')
+                state.closeBlock(node)
+              },
+              parse: {},
+            }
+          }
+        }
+      }).configure({ inline: false, allowBase64: false }),
       Markdown.configure({ html: false, transformPastedText: true }),
       Placeholder.configure({ placeholder: 'Start writing…' }),
       TaskList,

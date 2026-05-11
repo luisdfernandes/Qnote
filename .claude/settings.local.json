@@ -25,7 +25,9 @@
       "Bash(node scripts/generate-icon.js)",
       "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\('C:\\\\Dev Projects\\\\Qnote\\\\assets\\\\icon.png'\\); \"$\\($img.Width\\)x$\\($img.Height\\)\"; $img.Dispose\\(\\))",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(npm ci *)",
+      "Bash(node -e \"const {Markdown} = require\\('./node_modules/tiptap-markdown/dist/index.js'\\); console.log\\(Object.keys\\(Markdown.configure\\({}\\)\\)\\)\")"
     ]
   }
 }

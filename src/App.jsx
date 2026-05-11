@@ -5,6 +5,11 @@ import Editor from './components/Editor'
 import FilesViewer from './components/FilesViewer'
 import Settings from './components/Settings'
 
+// Strip diacritics so accented chars (ã, é, ç …) don't produce malformed paths/URLs
+function stripDiacritics(str) {
+  return str.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
 // ── Front matter helpers (notes only) ────────────────────────────────────────
 function parseFrontMatter(md) {
   if (!md) return { meta: {}, body: '' }
@@ -320,7 +325,8 @@ export default function App() {
     const src = sources.find(s => s.id === sourceId)
     if (!src) return
     const isNotes = src.kind === 'notes'
-    const fileName = isNotes && !name.endsWith('.md') ? `${name}.md` : name
+    const safeName = stripDiacritics(name)
+    const fileName = isNotes && !safeName.endsWith('.md') ? `${safeName}.md` : safeName
     const folderPath = (src.folder || '').replace(/\/$/, '')
     const sub = (subFolder || '').replace(/\/$/, '')
     const base = [folderPath, sub].filter(Boolean).join('/')
@@ -424,7 +430,7 @@ export default function App() {
     if (!src) return
     const folderBase = (src.folder || '').replace(/\/$/, '')
     const sub = (parentFolder || '').replace(/\/$/, '')
-    const cleanName = name.trim().replace(/^\/|\/$/g, '')
+    const cleanName = stripDiacritics(name.trim()).replace(/^\/|\/$/g, '')
     if (!cleanName) return
     const relativePath = sub ? `${sub}/${cleanName}` : cleanName
     const folderPath = folderBase ? `${folderBase}/${relativePath}` : relativePath
@@ -443,7 +449,7 @@ export default function App() {
   async function renameFile(file, sourceId, newName) {
     const src = sources.find(s => s.id === sourceId)
     if (!src) return
-    let safe = newName.trim().replace(/[\\/]/g, '-')
+    let safe = stripDiacritics(newName.trim()).replace(/[\\/]/g, '-')
     if (!safe) return
     if (src.kind === 'notes' && !safe.endsWith('.md')) safe += '.md'
     const slash = file.path.lastIndexOf('/')
@@ -474,7 +480,7 @@ export default function App() {
   async function renameFolder(sourceId, folderKey, newName) {
     const src = sources.find(s => s.id === sourceId)
     if (!src) return
-    const safe = newName.trim().replace(/[\\/]/g, '-')
+    const safe = stripDiacritics(newName.trim()).replace(/[\\/]/g, '-')
     if (!safe) return
     const folderBase = (src.folder || '').replace(/\/$/, '')
     const lastSlash = folderKey.lastIndexOf('/')
