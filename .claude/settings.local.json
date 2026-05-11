@@ -27,7 +27,12 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(npm ci *)",
-      "Bash(node -e \"const {Markdown} = require\\('./node_modules/tiptap-markdown/dist/index.js'\\); console.log\\(Object.keys\\(Markdown.configure\\({}\\)\\)\\)\")"
+      "Bash(node -e \"const {Markdown} = require\\('./node_modules/tiptap-markdown/dist/index.js'\\); console.log\\(Object.keys\\(Markdown.configure\\({}\\)\\)\\)\")",
+      "Bash(grep -o '.\\\\{0,80\\\\}fontFace.\\\\{0,80\\\\}' node_modules/@excalidraw/excalidraw/dist/prod/index.js)",
+      "Bash(python3 -c \" import sys, re content = sys.stdin.read\\(\\) matches = re.findall\\(r'.{0,30}Excalifont.{0,150}', content\\) for m in matches[:5]: print\\(repr\\(m\\)\\) \")",
+      "Bash(python3 -c \" import sys, re content = sys.stdin.read\\(\\) print\\('size:', len\\(content\\)\\) matches = re.findall\\(r'.{0,20}\\(woff2|FontFace|fontFace|fetch|url\\\\\\(\\).{0,300}', content, re.IGNORECASE\\) for m in matches[:5]: print\\(repr\\(m[:250]\\)\\) \")",
+      "Bash(python3 -c \" import sys, re content = sys.stdin.read\\(\\) matches = re.findall\\(r'url\\\\\\([^\\)]{5,300}\\\\\\)', content\\) for m in matches[:15]: print\\(repr\\(m\\)\\) \")",
+      "Bash(node scripts/copy-excalidraw-fonts.js)"
     ]
   }
 }

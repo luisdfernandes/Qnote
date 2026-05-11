@@ -171,8 +171,8 @@ function SourceSection({
     e.preventDefault()
     const name = newFileName.trim()
     if (!name) return
-    onFileSelect.bind(null) // noop just to use
-    startNewFile(name, newFileMode?.folder || '')
+    const finalName = newFileMode?.diagram && !name.endsWith('.excalidraw') ? `${name}.excalidraw` : name
+    startNewFile(finalName, newFileMode?.folder || '')
     setNewFileName('')
     setNewFileMode(null)
   }
@@ -318,7 +318,7 @@ function SourceSection({
           </div>
         )
       }
-      const labelText = isNotes ? node.name.replace(/\.md$/, '') : node.name
+      const labelText = isNotes ? node.name.replace(/\.(md|excalidraw)$/, '') : node.name
       return (
         <div
           key={node.path}
@@ -330,7 +330,7 @@ function SourceSection({
           onClick={() => onFileSelect(node, source.id)}
           onContextMenu={e => openContextMenu(e, 'file', node)}
         >
-          <span className="file-icon">{isNotes ? '📄' : fileIconFor(node.name)}</span>
+          <span className="file-icon">{isNotes && !node.name.endsWith('.excalidraw') ? '📄' : fileIconFor(node.name)}</span>
           {renameTarget?.type === 'file' && renameTarget.id === node.path ? (
             <input
               ref={renameInputRef}
@@ -376,6 +376,13 @@ function SourceSection({
               title="New folder"
               onClick={e => { e.stopPropagation(); setNewFolderMode({ folder: '' }); setNewFileMode(null) }}
             >+▦</button>
+            {isNotes && (
+              <button
+                className="btn-icon"
+                title="New diagram"
+                onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '', diagram: true }); setNewFolderMode(null) }}
+              >✎</button>
+            )}
             <button
               className="btn-icon"
               title={source.kind === 'files' ? 'New file' : 'New note'}
@@ -392,7 +399,7 @@ function SourceSection({
               <input
                 ref={inputRef}
                 type="text"
-                placeholder={isNotes ? 'filename.md' : 'filename.ext'}
+                placeholder={newFileMode?.diagram ? 'diagram.excalidraw' : isNotes ? 'filename.md' : 'filename.ext'}
                 value={newFileName}
                 onChange={e => setNewFileName(e.target.value)}
                 onKeyDown={e => {
@@ -491,6 +498,11 @@ function SourceSection({
               <button className="context-menu-item" onClick={() => {
                 setNewFileMode({ folder: '' }); setNewFolderMode(null); setContextMenu(null)
               }}>New {source.kind === 'files' ? 'file' : 'note'}</button>
+              {isNotes && (
+                <button className="context-menu-item" onClick={() => {
+                  setNewFileMode({ folder: '', diagram: true }); setNewFolderMode(null); setContextMenu(null)
+                }}>New diagram</button>
+              )}
               <button className="context-menu-item" onClick={() => {
                 setNewFolderMode({ folder: '' }); setNewFileMode(null); setContextMenu(null)
               }}>New folder</button>
@@ -507,6 +519,14 @@ function SourceSection({
                 setExpandedFolders(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
                 setContextMenu(null)
               }}>New {source.kind === 'files' ? 'file' : 'note'} in "{contextMenu.target.name}"</button>
+              {isNotes && (
+                <button className="context-menu-item" onClick={() => {
+                  setNewFileMode({ folder: contextMenu.target.key, diagram: true })
+                  setNewFolderMode(null)
+                  setExpandedFolders(prev => { const n = new Set(prev); n.add(contextMenu.target.key); return n })
+                  setContextMenu(null)
+                }}>New diagram in "{contextMenu.target.name}"</button>
+              )}
               <button className="context-menu-item" onClick={() => {
                 setNewFolderMode({ folder: contextMenu.target.key })
                 setNewFileMode(null)
@@ -548,6 +568,7 @@ function SourceSection({
 
 function fileIconFor(name) {
   const ext = (name.split('.').pop() || '').toLowerCase()
+  if (ext === 'excalidraw') return '✏'
   if (['png','jpg','jpeg','gif','svg','webp','bmp','ico'].includes(ext)) return '🖼'
   if (['mp4','mov','webm','avi','mkv'].includes(ext)) return '🎬'
   if (['mp3','wav','ogg','m4a','flac'].includes(ext)) return '♪'

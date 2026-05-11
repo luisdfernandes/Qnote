@@ -3,3 +3,5 @@
 /release
 /build/icon.png
 *.stackdump
+/public/fonts/
+.DS_Store

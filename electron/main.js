@@ -250,6 +250,7 @@ ipcMain.handle('github:listFiles', async (_, arg) => {
         if (folderPath && !f.path.startsWith(prefix)) return false
         if (includeAll) return true
         return f.path.endsWith('.md') ||
+               f.path.endsWith('.excalidraw') ||
                f.path.endsWith('/.gitkeep') ||
                f.path === `${prefix}.gitkeep`
       })

@@ -1848,3 +1848,39 @@ body { user-select: none; }
   border-radius: var(--radius);
   background: #fff;
 }
+
+/* ── Diagram editor ──────────────────────────────────────────────────────── */
+.diagram-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-toolbar);
+  flex-shrink: 0;
+  height: var(--toolbar-h);
+}
+.diagram-canvas {
+  flex: 1;
+  min-height: 0;
+}
+.diagram-canvas .excalidraw {
+  height: 100%;
+}
+.diagram-canvas .excalidraw-container {
+  height: 100%;
+}
+.diagram-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  font-size: 14px;
+}

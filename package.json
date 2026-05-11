@@ -4,7 +4,9 @@
   "description": "GitHub-backed markdown note editor",
   "main": "electron/main.js",
   "scripts": {
+    "predev": "node scripts/copy-excalidraw-fonts.js",
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "prebuild": "node scripts/copy-excalidraw-fonts.js",
     "build": "vite build",
     "build:icon": "node scripts/build-icon.js",
     "start": "electron .",
@@ -27,7 +29,12 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "${productName}-${version}-win-${arch}.${ext}"
     },
@@ -38,7 +45,13 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.productivity",
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
@@ -48,6 +61,7 @@
     }
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@tiptap/extension-code-block-lowlight": "^3.22.5",
     "@tiptap/extension-image": "^3.22.5",
     "@tiptap/extension-link": "^3.22.5",

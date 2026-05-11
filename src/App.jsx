@@ -1,9 +1,19 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import Editor from './components/Editor'
 import FilesViewer from './components/FilesViewer'
 import Settings from './components/Settings'
+
+const DiagramEditor = lazy(() => import('./components/DiagramEditor'))
+
+const EMPTY_EXCALIDRAW = JSON.stringify({
+  type: 'excalidraw',
+  version: 2,
+  elements: [],
+  appState: { viewBackgroundColor: '#1e1e2e', gridSize: null },
+  files: {},
+}, null, 2)
 
 // Strip diacritics so accented chars (ã, é, ç …) don't produce malformed paths/URLs
 function stripDiacritics(str) {
@@ -249,12 +259,20 @@ export default function App() {
     try {
       if (src.kind === 'notes') {
         const { content: text, sha, fromCache } = await window.api.github.getFile(file.path)
+        if (file.name.endsWith('.excalidraw')) {
+          setActiveFile({ ...file, sha, sourceId, sourceKind: 'notes' })
+          setContent(text); setSavedContent(text)
+          setMeta({}); setSavedMeta({})
+          if (fromCache) setOffline(true)
+          setMode('edit')
+        } else {
         const { meta: parsedMeta, body } = parseFrontMatter(text)
         setActiveFile({ ...file, sha, sourceId, sourceKind: 'notes' })
         setContent(body); setSavedContent(body)
         setMeta(parsedMeta); setSavedMeta(parsedMeta)
         if (fromCache) setOffline(true)
         setMode('view')
+        }
       } else {
         // files-kind: fetch lazily inside FilesViewer (it knows the type)
         setActiveFile({ ...file, sourceId, sourceKind: 'files' })
@@ -272,15 +290,16 @@ export default function App() {
   const saveFile = useCallback(async () => {
     if (!activeFile || !isDirty) return
     if (activeFile.sourceKind !== 'notes') return // FilesViewer handles its own saves
+    const isDiagramFile = activeFile.name.endsWith('.excalidraw')
     setLoading(true)
     setStatus('Saving…')
     try {
-      const newMeta = {
+      const newMeta = isDiagramFile ? meta : {
         ...meta,
         created: meta.created || new Date().toISOString(),
         modified: new Date().toISOString(),
       }
-      const fullContent = serializeFrontMatter(newMeta, content)
+      const fullContent = isDiagramFile ? content : serializeFrontMatter(newMeta, content)
       const { sha } = await window.api.github.saveFile({
         filePath: activeFile.path,
         content: fullContent,
@@ -326,7 +345,8 @@ export default function App() {
     if (!src) return
     const isNotes = src.kind === 'notes'
     const safeName = stripDiacritics(name)
-    const fileName = isNotes && !safeName.endsWith('.md') ? `${safeName}.md` : safeName
+    const hasManagedExt = safeName.endsWith('.md') || safeName.endsWith('.excalidraw')
+    const fileName = isNotes && !hasManagedExt ? `${safeName}.md` : safeName
     const folderPath = (src.folder || '').replace(/\/$/, '')
     const sub = (subFolder || '').replace(/\/$/, '')
     const base = [folderPath, sub].filter(Boolean).join('/')
@@ -337,10 +357,14 @@ export default function App() {
     try {
       let initialContent = ''
       if (isNotes) {
-        const now = new Date().toISOString()
-        const initialMeta = { categories: [], created: now, modified: now }
-        const title = fileName.replace(/\.md$/, '')
-        initialContent = serializeFrontMatter(initialMeta, `# ${title}\n\n`)
+        if (fileName.endsWith('.excalidraw')) {
+          initialContent = EMPTY_EXCALIDRAW
+        } else {
+          const now = new Date().toISOString()
+          const initialMeta = { categories: [], created: now, modified: now }
+          const title = fileName.replace(/\.md$/, '')
+          initialContent = serializeFrontMatter(initialMeta, `# ${title}\n\n`)
+        }
       }
       const { sha } = await window.api.github.saveFile({
         filePath, content: initialContent, sha: null,
@@ -451,7 +475,7 @@ export default function App() {
     if (!src) return
     let safe = stripDiacritics(newName.trim()).replace(/[\\/]/g, '-')
     if (!safe) return
-    if (src.kind === 'notes' && !safe.endsWith('.md')) safe += '.md'
+    if (src.kind === 'notes' && !safe.endsWith('.md') && !safe.endsWith('.excalidraw')) safe += '.md'
     const slash = file.path.lastIndexOf('/')
     const dir = slash >= 0 ? file.path.slice(0, slash) : ''
     const newPath = dir ? `${dir}/${safe}` : safe
@@ -632,6 +656,7 @@ export default function App() {
   }, [saveFile, activeFile])
 
   const isNotesActive = activeFile?.sourceKind === 'notes'
+  const isDiagram = isNotesActive && !!activeFile?.name?.endsWith('.excalidraw')
 
   return (
     <div className="app">
@@ -657,7 +682,7 @@ export default function App() {
       />
 
       <div className="main">
-        {isNotesActive ? (
+        {isNotesActive && !isDiagram ? (
           <Toolbar
             activeFile={activeFile}
             isDirty={isDirty}
@@ -687,7 +712,22 @@ export default function App() {
           </div>
         )}
 
-        {isNotesActive ? (
+        {isDiagram ? (
+          <Suspense fallback={<div className="diagram-loading">Loading diagram…</div>}>
+            <DiagramEditor
+              key={activeFile.path}
+              content={content}
+              onChange={setContent}
+              isDirty={isDirty}
+              loading={loading}
+              status={status}
+              onSave={saveFile}
+              onOpenGitHub={openOnGitHub}
+              onShareUrl={copyShareUrl}
+              onRequestDelete={() => activeFile && setDeleteTarget({ type: 'file', file: activeFile, sourceId: activeFile.sourceId })}
+            />
+          </Suspense>
+        ) : isNotesActive ? (
           <Editor
             content={toEditorMarkdown(content, activeFile?.path, config)}
             onChange={md => setContent(toStorageMarkdown(md, activeFile?.path, config))}
