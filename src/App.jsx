@@ -4,6 +4,7 @@ import Toolbar from './components/Toolbar'
 import Editor from './components/Editor'
 import FilesViewer from './components/FilesViewer'
 import Settings from './components/Settings'
+import CommandPalette from './components/CommandPalette'
 
 const DiagramEditor = lazy(() => import('./components/DiagramEditor'))
 
@@ -182,6 +183,7 @@ export default function App() {
   const [deleteTarget, setDeleteTarget] = useState(null) // { type, ... }
   const [lastSync, setLastSync] = useState(null)
   const [backlinks, setBacklinks] = useState([])
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
 
   const isDirty =
     !!activeFile && (content !== savedContent ||
@@ -643,7 +645,10 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
-      if (e.key === 's' || e.key === 'S') {
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault()
+        setCmdPaletteOpen(v => !v)
+      } else if (e.key === 's' || e.key === 'S') {
         e.preventDefault()
         saveFile()
       } else if (e.key === 'e' || e.key === 'E') {
@@ -831,6 +836,18 @@ export default function App() {
           }}
           canClose={!!(config?.token && config?.owner && config?.repo)}
           genSourceId={genSourceId}
+        />
+      )}
+
+      {cmdPaletteOpen && (
+        <CommandPalette
+          sources={sources}
+          filesBySource={filesBySource}
+          onOpen={(file, sourceId) => {
+            setCmdPaletteOpen(false)
+            openFile(file, sourceId)
+          }}
+          onClose={() => setCmdPaletteOpen(false)}
         />
       )}
     </div>
