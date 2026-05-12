@@ -56,9 +56,10 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
     if (!q) { setServerResults([]); setPending(false); return }
     setPending(true)
     let cancelled = false
+    const folders = sources.map(s => s.folder || '')
     const timer = setTimeout(async () => {
       try {
-        const r = await window.api.github.search(q)
+        const r = await window.api.github.search(q, folders)
         if (!cancelled) setServerResults(r || [])
       } catch {
         if (!cancelled) setServerResults([])
@@ -67,7 +68,7 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
       }
     }, 200)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [query])
+  }, [query, sources])
 
   const results = useMemo(() => {
     if (!query.trim()) {

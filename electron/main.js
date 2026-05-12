@@ -324,7 +324,7 @@ ipcMain.handle('github:getBacklinks', async (_, { folder, title }) => {
   )
 })
 
-ipcMain.handle('github:search', async (_, query) => {
+ipcMain.handle('github:search', async (_, query, folders) => {
   const q = (query || '').trim().toLowerCase()
   if (!q) return []
 
@@ -332,7 +332,15 @@ ipcMain.handle('github:search', async (_, query) => {
   const results = []
   const seen = new Set()
 
-  for (const file of allCachedFiles(cache)) {
+  // Restrict to the requested folder buckets (configured sources). If no
+  // folders are provided, search everything (legacy callers).
+  const buckets = Array.isArray(folders) && folders.length
+    ? folders
+        .map(f => (f ?? '').replace(/^\/|\/$/g, ''))
+        .map(k => cache.filesByFolder?.[k] || [])
+    : Object.values(cache.filesByFolder || {})
+
+  for (const file of buckets.flat()) {
     if (seen.has(file.path)) continue
     seen.add(file.path)
     const titleMatch = file.name.toLowerCase().includes(q) ||

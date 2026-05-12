@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld('api', {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: (opts) => ipcRenderer.invoke('github:listFiles', opts),
     loadAllMetadata: (folder) => ipcRenderer.invoke('github:loadAllMetadata', folder),
-    search: (query) => ipcRenderer.invoke('github:search', query),
+    search: (query, folders) => ipcRenderer.invoke('github:search', query, folders),
     getBacklinks: (args) => ipcRenderer.invoke('github:getBacklinks', args),
     getFile: (filePath) => ipcRenderer.invoke('github:getFile', filePath),
     getFileBinary: (filePath) => ipcRenderer.invoke('github:getFileBinary', filePath),

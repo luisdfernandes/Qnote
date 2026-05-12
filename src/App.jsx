@@ -623,6 +623,19 @@ export default function App() {
     if (url) window.api.shell.openExternal(url)
   }
 
+  async function copyShareUrl() {
+    const url = getNoteUrl()
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setStatus('Link copied ✓')
+      setTimeout(() => setStatus(''), 2000)
+    } catch {
+      setStatus('Copy failed')
+      setTimeout(() => setStatus(''), 2000)
+    }
+  }
+
   function downloadActiveNote() {
     if (!activeFile || activeFile.sourceKind !== 'notes') return
     const fullContent = serializeFrontMatter(meta, content)
