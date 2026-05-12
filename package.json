@@ -40,8 +40,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
     },
     "mac": {
       "target": [

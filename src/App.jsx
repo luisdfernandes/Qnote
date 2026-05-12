@@ -12,7 +12,7 @@ const EMPTY_EXCALIDRAW = JSON.stringify({
   type: 'excalidraw',
   version: 2,
   elements: [],
-  appState: { viewBackgroundColor: '#1e1e2e', gridSize: null },
+  appState: { viewBackgroundColor: '#000000', gridSize: null },
   files: {},
 }, null, 2)
 

@@ -5,10 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' https://raw.githubusercontent.com data: blob:; font-src 'self' data: blob:; worker-src blob:;" />
   <title>QNote</title>
-  <script type="module" crossorigin src="./assets/index-BnzVzeOy.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BkXPhdB5.css">
+  <script>
+    // Point Excalidraw at locally-bundled fonts (copied to public/fonts/ by
+    // scripts/copy-excalidraw-fonts.js). Without this it loads from a CDN
+    // which the CSP blocks, and all custom fonts silently fall back to one
+    // default — making every font selection look identical.
+    window.EXCALIDRAW_ASSET_PATH = new URL('.', document.baseURI).href;
+  </script>
+  <script type="module" crossorigin src="./assets/index-BGeJLQAj.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-jv7vWfvV.css">
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root"></div>
 </body>
 </html>
