@@ -678,16 +678,28 @@ export default function Sidebar({
     return () => clearTimeout(timer)
   }, [searchQuery, searchMode])
 
-  function openSearch() { setSearchMode(true) }
+  function openSearch() {
+    setSearchMode(true)
+    // Focus on the next frame so competing effects (e.g. ProseMirror's default
+    // Ctrl+F handler that runs in the bubble phase) don't steal it back.
+    requestAnimationFrame(() => searchRef.current?.focus())
+  }
   function closeSearch() { setSearchMode(false); setSearchQuery(''); setSearchResults([]) }
 
+  // Capture-phase listener — fires *before* ProseMirror sees the keydown, so
+  // we can stopPropagation and prevent the editor from moving the cursor or
+  // re-focusing itself when the user opens search.
   useEffect(() => {
     const onKey = e => {
       if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key === 'f') { e.preventDefault(); openSearch() }
+      if (e.key === 'f') {
+        e.preventDefault()
+        e.stopPropagation()
+        openSearch()
+      }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
   }, [])
 
   // ── Per-section UI state ───────────────────────────────────────────────────
@@ -814,6 +826,7 @@ export default function Sidebar({
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === 'Escape' && closeSearch()}
+              autoFocus
             />
           ) : (
             <span className="brand">QNote</span>

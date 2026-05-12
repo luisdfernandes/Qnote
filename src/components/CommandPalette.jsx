@@ -86,6 +86,7 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
 
   useEffect(() => {
     inputRef.current?.focus()
+    requestAnimationFrame(() => inputRef.current?.focus())
   }, [])
 
   useEffect(() => {
@@ -125,6 +126,7 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKey}
             spellCheck={false}
+            autoFocus
           />
           <kbd className="cmd-palette-esc">Esc</kbd>
         </div>

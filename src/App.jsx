@@ -184,6 +184,8 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null)
   const [backlinks, setBacklinks] = useState([])
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
+  const [activeGist, setActiveGist] = useState(null) // { id, url } | null
+  const [managedCats, setManagedCats] = useState({ cats: [], sha: null })
 
   const isDirty =
     !!activeFile && (content !== savedContent ||
@@ -247,6 +249,16 @@ export default function App() {
           .then(map => setCategoriesBySource(prev => ({ ...prev, [src.id]: map })))
           .catch(() => {})
       }
+
+      // Load managed categories file
+      window.api.github.getFile('.qnote/categories.json')
+        .then(({ content, sha }) => {
+          try {
+            const cats = JSON.parse(content)
+            setManagedCats({ cats: Array.isArray(cats) ? cats : [], sha })
+          } catch { /* malformed file — start fresh */ }
+        })
+        .catch(() => setManagedCats({ cats: [], sha: null }))
     } catch (e) {
       setError(e.message)
     } finally {
@@ -586,6 +598,19 @@ export default function App() {
     setMeta({}); setSavedMeta({})
   }
 
+  async function saveManagedCategories(cats) {
+    try {
+      const { sha } = await window.api.github.saveFile({
+        filePath: '.qnote/categories.json',
+        content: JSON.stringify(cats, null, 2),
+        sha: managedCats.sha,
+      })
+      setManagedCats({ cats, sha })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   function getNoteUrl() {
     if (!activeFile || !config?.owner || !config?.repo) return null
     const branch = config.branch || 'main'
@@ -612,16 +637,34 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  async function copyShareUrl() {
-    const url = getNoteUrl()
-    if (!url) return
+  async function shareAsGist() {
+    if (!activeFile || activeFile.sourceKind !== 'notes') return
     try {
-      await navigator.clipboard.writeText(url)
-      setStatus('Link copied ✓')
+      setStatus('Publishing…')
+      const result = await window.api.gist.create({
+        notePath: activeFile.path,
+        filename: activeFile.name,
+        content,
+      })
+      setActiveGist({ id: result.id, url: result.url })
+      await navigator.clipboard.writeText(result.url)
+      setStatus(result.existing ? 'Link copied ✓' : 'Published & copied ✓')
+      setTimeout(() => setStatus(''), 2500)
+    } catch (e) {
+      setError(e.message)
+      setStatus('')
+    }
+  }
+
+  async function revokeGist() {
+    if (!activeFile || !activeGist) return
+    try {
+      await window.api.gist.delete({ notePath: activeFile.path })
+      setActiveGist(null)
+      setStatus('Gist deleted ✓')
       setTimeout(() => setStatus(''), 2000)
-    } catch {
-      setStatus('Copy failed')
-      setTimeout(() => setStatus(''), 2000)
+    } catch (e) {
+      setError(e.message)
     }
   }
 
@@ -657,9 +700,20 @@ export default function App() {
         setMode(m => (m === 'edit' ? 'view' : 'edit'))
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
   }, [saveFile, activeFile])
+
+  const allCategories = useMemo(() => {
+    // Merge managed list with any categories already used in notes (so nothing gets lost)
+    const set = new Set(managedCats.cats)
+    for (const map of Object.values(categoriesBySource)) {
+      for (const cats of Object.values(map)) {
+        if (Array.isArray(cats)) cats.forEach(c => set.add(c))
+      }
+    }
+    return [...set].sort()
+  }, [managedCats.cats, categoriesBySource])
 
   const allNoteNames = useMemo(() => {
     const names = new Set()
@@ -682,6 +736,16 @@ export default function App() {
     window.api.github.getBacklinks({ folder: src.folder, title: activeFile.name.replace(/\.md$/, '') })
       .then(setBacklinks)
       .catch(() => setBacklinks([]))
+  }, [activeFile?.path])
+
+  useEffect(() => {
+    if (!activeFile || activeFile.sourceKind !== 'notes' || !activeFile.name.endsWith('.md')) {
+      setActiveGist(null)
+      return
+    }
+    window.api.gist.getForNote(activeFile.path)
+      .then(setActiveGist)
+      .catch(() => setActiveGist(null))
   }, [activeFile?.path])
 
   function handleWikilinkClick(title) {
@@ -733,8 +797,13 @@ export default function App() {
             onSave={saveFile}
             meta={meta}
             onMetaChange={setMeta}
+            allCategories={allCategories}
+            managedCategories={managedCats.cats}
+            onSaveManagedCategories={saveManagedCategories}
             onOpenGitHub={openOnGitHub}
-            onShareUrl={copyShareUrl}
+            onShareAsGist={shareAsGist}
+            onRevokeGist={revokeGist}
+            activeGist={activeGist}
             onDownload={downloadActiveNote}
             onRequestDelete={() => activeFile && setDeleteTarget({ type: 'file', file: activeFile, sourceId: activeFile.sourceId })}
           />
@@ -763,7 +832,7 @@ export default function App() {
               status={status}
               onSave={saveFile}
               onOpenGitHub={openOnGitHub}
-              onShareUrl={copyShareUrl}
+              onShareUrl={openOnGitHub}
               onRequestDelete={() => activeFile && setDeleteTarget({ type: 'file', file: activeFile, sourceId: activeFile.sourceId })}
             />
           </Suspense>
@@ -836,6 +905,8 @@ export default function App() {
           }}
           canClose={!!(config?.token && config?.owner && config?.repo)}
           genSourceId={genSourceId}
+          managedCategories={managedCats.cats}
+          onSaveManagedCategories={saveManagedCategories}
         />
       )}
 

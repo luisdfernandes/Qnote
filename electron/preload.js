@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   },
+  gist: {
+    getForNote: (notePath) => ipcRenderer.invoke('gist:getForNote', notePath),
+    create: (data) => ipcRenderer.invoke('gist:create', data),
+    delete: (data) => ipcRenderer.invoke('gist:delete', data),
+  },
   github: {
     testConnection: (cfg) => ipcRenderer.invoke('github:testConnection', cfg),
     listFiles: (opts) => ipcRenderer.invoke('github:listFiles', opts),

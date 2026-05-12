@@ -35,7 +35,7 @@ function initialSources(cfg) {
   return [{ id: 'notes', name: 'Notes', folder: cfg?.folder ?? 'notes', kind: 'notes' }]
 }
 
-export default function Settings({ config, onSave, onClose, canClose }) {
+export default function Settings({ config, onSave, onClose, canClose, managedCategories = [], onSaveManagedCategories }) {
   const [form, setForm] = useState({
     owner:  config?.owner  || '',
     repo:   config?.repo   || '',
@@ -49,6 +49,9 @@ export default function Settings({ config, onSave, onClose, canClose }) {
   })
   const [showToken, setShowToken] = useState(false)
   const [testState, setTestState] = useState(null)
+  const [cats, setCats] = useState([...managedCategories])
+  const [catInput, setCatInput] = useState('')
+  const [editingCat, setEditingCat] = useState(null) // { index, value }
 
   const set = (key) => (e) => {
     setTestState(null)
@@ -100,6 +103,26 @@ export default function Settings({ config, onSave, onClose, canClose }) {
     }
   }
 
+  function addCat() {
+    const val = catInput.trim().replace(/[,\[\]]/g, '')
+    if (!val || cats.some(c => c.toLowerCase() === val.toLowerCase())) return
+    setCats(prev => [...prev, val])
+    setCatInput('')
+  }
+
+  function removeCat(idx) {
+    setCats(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  function commitRename() {
+    if (!editingCat) return
+    const val = editingCat.value.trim().replace(/[,\[\]]/g, '')
+    if (val && !cats.some((c, i) => i !== editingCat.index && c.toLowerCase() === val.toLowerCase())) {
+      setCats(prev => prev.map((c, i) => i === editingCat.index ? val : c))
+    }
+    setEditingCat(null)
+  }
+
   function handleSubmit(e) {
     e.preventDefault()
     const cleanSources = form.sources
@@ -115,6 +138,9 @@ export default function Settings({ config, onSave, onClose, canClose }) {
       while (seen.has(s.id)) s.id = genId()
       seen.add(s.id)
     }
+    // Save categories if changed
+    const catsChanged = JSON.stringify(cats) !== JSON.stringify(managedCategories)
+    if (catsChanged) onSaveManagedCategories?.(cats)
     onSave({ ...form, sources: cleanSources })
   }
 
@@ -277,6 +303,59 @@ export default function Settings({ config, onSave, onClose, canClose }) {
                 }))
               }}
             >+ Add section</button>
+          </div>
+
+          {/* ── Categories ── */}
+          <div className="settings-section-label" style={{ marginTop: 24 }}>
+            Categories
+          </div>
+          <p className="hint" style={{ marginTop: -4, marginBottom: 10 }}>
+            Saved to <code>.qnote/categories.json</code> in your repo. Click a label to rename it.
+          </p>
+          <div className="cats-list">
+            {cats.map((cat, idx) => (
+              <span key={idx} className="cats-item">
+                {editingCat?.index === idx ? (
+                  <input
+                    autoFocus
+                    className="cats-rename-input"
+                    value={editingCat.value}
+                    onChange={e => setEditingCat({ index: idx, value: e.target.value })}
+                    onBlur={commitRename}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                      else if (e.key === 'Escape') setEditingCat(null)
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="cats-label"
+                    onClick={() => setEditingCat({ index: idx, value: cat })}
+                    title="Click to rename"
+                  >{cat}</span>
+                )}
+                <button
+                  type="button"
+                  className="cats-remove"
+                  onClick={() => removeCat(idx)}
+                  title="Remove"
+                >×</button>
+              </span>
+            ))}
+            {cats.length === 0 && (
+              <span className="hint">No categories yet.</span>
+            )}
+          </div>
+          <div className="cats-add-row">
+            <input
+              type="text"
+              className="cats-add-input"
+              value={catInput}
+              onChange={e => setCatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCat() } }}
+              placeholder="New category…"
+            />
+            <button type="button" className="btn btn-ghost" onClick={addCat}>Add</button>
           </div>
 
           {/* ── Appearance ── */}

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 function relative(ts) {
   if (!ts) return null
@@ -29,31 +30,181 @@ export default function Toolbar({
   onModeToggle,
   onSave,
   onOpenGitHub,
-  onShareUrl,
+  onShareAsGist,
+  onRevokeGist,
+  activeGist,
   onDownload,
   onRequestDelete,
+  allCategories = [],
+  managedCategories = [],
+  onSaveManagedCategories,
 }) {
-  const categories = Array.isArray(meta?.categories) ? meta.categories : []
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState('')
+  const categories = [...new Set(Array.isArray(meta?.categories) ? meta.categories : [])]
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 })
+  const [filter, setFilter] = useState('')
+  const [saving, setSaving] = useState(false)
+  const anchorRef = useRef(null)
+  const pickerRef = useRef(null)
   const inputRef = useRef(null)
-  const editable = !!activeFile && mode === 'edit'
+  const editable = !!activeFile && mode === 'view'
+
+  // Callback ref: focus the moment the input is attached. Runs synchronously on
+  // mount, which avoids races with ProseMirror's contenteditable focus.
+  const attachInput = (el) => {
+    inputRef.current = el
+    if (el) {
+      el.focus({ preventScroll: true })
+      // Belt-and-suspenders for Electron/Chromium: re-focus on the next frame
+      // in case something steals focus during the same tick.
+      requestAnimationFrame(() => {
+        if (document.activeElement !== el) el.focus({ preventScroll: true })
+      })
+    }
+  }
 
   useEffect(() => {
-    if (adding) inputRef.current?.focus()
-  }, [adding])
+    if (!pickerOpen) return
+    const onDown = (e) => {
+      if (
+        pickerRef.current && !pickerRef.current.contains(e.target) &&
+        anchorRef.current && !anchorRef.current.contains(e.target)
+      ) {
+        setPickerOpen(false)
+        setFilter('')
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [pickerOpen])
 
-  function commitAdd() {
-    const value = draft.trim().replace(/[,\[\]]/g, '')
-    setDraft('')
-    setAdding(false)
-    if (!value || categories.includes(value)) return
-    onMetaChange?.({ ...meta, categories: [...categories, value] })
+  function openPicker() {
+    if (pickerOpen) { setPickerOpen(false); setFilter(''); return }
+    const rect = anchorRef.current?.getBoundingClientRect()
+    if (rect) setPickerPos({ top: rect.bottom + 4, left: rect.left })
+    setPickerOpen(true)
   }
 
-  function removeCategory(tag) {
+  function toggleNoteCategory(tag) {
+    const next = categories.includes(tag)
+      ? categories.filter(t => t !== tag)
+      : [...categories, tag]
+    onMetaChange?.({ ...meta, categories: next })
+  }
+
+  function removeNoteCategory(tag) {
     onMetaChange?.({ ...meta, categories: categories.filter(t => t !== tag) })
   }
+
+  async function addToList() {
+    const val = filter.trim().replace(/[,\[\]]/g, '')
+    if (!val) return
+    setFilter('')
+    const alreadyInList = managedCategories.some(c => c.toLowerCase() === val.toLowerCase())
+    const newList = alreadyInList ? managedCategories : [...managedCategories, val]
+    if (!alreadyInList) {
+      setSaving(true)
+      await onSaveManagedCategories?.(newList)
+      setSaving(false)
+    }
+    // Also add to current note if not already there
+    if (!categories.includes(val)) {
+      onMetaChange?.({ ...meta, categories: [...categories, val] })
+    }
+  }
+
+  async function removeFromList(tag) {
+    const newList = managedCategories.filter(t => t !== tag)
+    setSaving(true)
+    await onSaveManagedCategories?.(newList)
+    setSaving(false)
+    // Also remove from current note if present
+    if (categories.includes(tag)) {
+      onMetaChange?.({ ...meta, categories: categories.filter(t => t !== tag) })
+    }
+  }
+
+  const suggestions = allCategories.filter(c =>
+    c.toLowerCase().includes(filter.toLowerCase())
+  )
+  const canAdd = filter.trim() && !allCategories.some(
+    c => c.toLowerCase() === filter.trim().toLowerCase()
+  )
+  const isInManagedList = (tag) => managedCategories.includes(tag)
+
+  const picker = pickerOpen ? createPortal(
+    <div
+      ref={pickerRef}
+      className="cat-picker"
+      style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left }}
+    >
+      <input
+        ref={attachInput}
+        className="cat-picker-input"
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); addToList() }
+          else if (e.key === 'Escape') { setPickerOpen(false); setFilter('') }
+        }}
+        placeholder="Search or type new…"
+      />
+      <div className="cat-picker-list">
+        {suggestions.map(tag => (
+          <div key={tag} className="cat-picker-row">
+            <button
+              type="button"
+              className={`cat-picker-item${categories.includes(tag) ? ' is-selected' : ''}`}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => toggleNoteCategory(tag)}
+            >
+              <span className="cat-picker-check">{categories.includes(tag) ? '✓' : ''}</span>
+              {tag}
+            </button>
+            {isInManagedList(tag) ? (
+              <button
+                type="button"
+                className="cat-picker-delete"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => removeFromList(tag)}
+                title="Remove from saved list"
+              >×</button>
+            ) : (
+              <button
+                type="button"
+                className="cat-picker-save-tag"
+                onMouseDown={e => e.preventDefault()}
+                onClick={async () => {
+                  setSaving(true)
+                  await onSaveManagedCategories?.([...managedCategories, tag])
+                  setSaving(false)
+                }}
+                title="Save to list"
+              >+</button>
+            )}
+          </div>
+        ))}
+        {canAdd && (
+          <button
+            type="button"
+            className="cat-picker-item cat-picker-new"
+            onMouseDown={e => e.preventDefault()}
+            onClick={addToList}
+          >
+            <span className="cat-picker-check">+</span>
+            Add "{filter.trim()}"
+          </button>
+        )}
+        {suggestions.length === 0 && !canAdd && (
+          <div className="cat-picker-empty">
+            {allCategories.length === 0 ? 'Type a name and press Enter' : 'No matches — press Enter to add'}
+          </div>
+        )}
+      </div>
+      {saving && <div className="cat-picker-footer">Saving…</div>}
+    </div>,
+    document.body
+  ) : null
 
   return (
     <div className="toolbar">
@@ -69,34 +220,23 @@ export default function Toolbar({
                   <button
                     type="button"
                     className="meta-chip-remove"
-                    onClick={() => removeCategory(tag)}
-                    title={`Remove "${tag}"`}
+                    onClick={() => removeNoteCategory(tag)}
+                    title={`Remove "${tag}" from this note`}
                   >×</button>
                 )}
               </span>
             ))}
             {editable && (
-              adding ? (
-                <input
-                  ref={inputRef}
-                  className="meta-add-input"
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  onBlur={commitAdd}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter')      { e.preventDefault(); commitAdd() }
-                    else if (e.key === 'Escape') { setDraft(''); setAdding(false) }
-                  }}
-                  placeholder="category"
-                />
-              ) : (
+              <>
                 <button
+                  ref={anchorRef}
                   type="button"
                   className="meta-add-btn"
-                  onClick={() => setAdding(true)}
+                  onClick={openPicker}
                   title="Add category"
                 >+ category</button>
-              )
+                {picker}
+              </>
             )}
           </div>
         )}
@@ -123,13 +263,13 @@ export default function Toolbar({
         {activeFile && (
           <>
             <button
-              className="btn-icon toolbar-mode-btn"
-              onClick={onShareUrl}
-              title="Copy GitHub link"
+              className={`btn-icon toolbar-mode-btn${activeGist ? ' is-active' : ''}`}
+              onClick={e => e.shiftKey ? onRevokeGist?.() : onShareAsGist?.()}
+              title={activeGist ? 'Copy share link (Shift+click to revoke)' : 'Share as secret Gist'}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
-                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
               </svg>
             </button>
 

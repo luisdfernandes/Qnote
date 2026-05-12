@@ -258,7 +258,7 @@ function TiptapEditor({ content, onChange, onImageUpload, allNotes, onWikilinkCl
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false }),
+      StarterKit.configure({ codeBlock: false, link: false }),
       CodeBlockLowlight.configure({ lowlight }),
       Image.extend({
         addStorage() {

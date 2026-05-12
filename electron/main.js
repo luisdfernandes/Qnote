@@ -445,6 +445,53 @@ ipcMain.handle('github:uploadImage', async (_, { filePath, base64Data }) => {
   return { sha: data.content.sha, url: rawUrl }
 })
 
+// ── IPC: Gists ───────────────────────────────────────────────────────────────
+const gistStorePath = path.join(app.getPath('userData'), 'gists.json')
+
+function getGistStore() {
+  try { return JSON.parse(fs.readFileSync(gistStorePath, 'utf8')) }
+  catch { return {} }
+}
+
+function saveGistStore(data) {
+  try { fs.writeFileSync(gistStorePath, JSON.stringify(data, null, 2)) }
+  catch { /* non-fatal */ }
+}
+
+ipcMain.handle('gist:getForNote', (_, notePath) => {
+  return getGistStore()[notePath] || null
+})
+
+ipcMain.handle('gist:create', async (_, { notePath, filename, content }) => {
+  const { token } = getConfig()
+  if (!token) throw new Error('No GitHub token configured.')
+
+  const store = getGistStore()
+  if (store[notePath]) return { ...store[notePath], existing: true }
+
+  const data = await ghRequest('POST', '/gists', {
+    description: filename.replace(/\.md$/, ''),
+    public: false,
+    files: { [filename]: { content } },
+  }, token)
+
+  const entry = { id: data.id, url: data.html_url }
+  store[notePath] = entry
+  saveGistStore(store)
+  return { ...entry, existing: false }
+})
+
+ipcMain.handle('gist:delete', async (_, { notePath }) => {
+  const { token } = getConfig()
+  const store = getGistStore()
+  const entry = store[notePath]
+  if (!entry) return false
+  await ghRequest('DELETE', `/gists/${entry.id}`, null, token)
+  delete store[notePath]
+  saveGistStore(store)
+  return true
+})
+
 ipcMain.handle('github:deleteFile', async (_, { filePath, sha }) => {
   const { owner, repo, branch, token } = getConfig()
   await ghRequest(
