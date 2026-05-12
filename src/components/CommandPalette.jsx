@@ -15,44 +15,27 @@ function fileIcon(name) {
   return '📄'
 }
 
-function fuzzyMatch(query, str) {
-  if (!query) return { matched: true, score: 0, ranges: [] }
+function highlightSubstring(text, query) {
+  if (!query) return <span>{text}</span>
   const q = query.toLowerCase()
-  const s = str.toLowerCase()
-  const ranges = []
-  let si = 0
-  let qi = 0
-  while (qi < q.length && si < s.length) {
-    if (q[qi] === s[si]) {
-      const start = si
-      while (qi < q.length && si < s.length && q[qi] === s[si]) { qi++; si++ }
-      ranges.push([start, si])
-    } else {
-      si++
-    }
-  }
-  if (qi < q.length) return { matched: false }
-  // score: consecutive runs are better; earlier match is better
-  const score = ranges.reduce((acc, [a, b]) => acc + (b - a) * (b - a), 0) - ranges[0][0] * 0.01
-  return { matched: true, score, ranges }
-}
-
-function HighlightedTitle({ title, ranges }) {
-  if (!ranges || !ranges.length) return <span>{title}</span>
+  const lower = text.toLowerCase()
   const parts = []
-  let last = 0
-  for (const [a, b] of ranges) {
-    if (a > last) parts.push(<span key={last}>{title.slice(last, a)}</span>)
-    parts.push(<mark key={a} className="search-highlight">{title.slice(a, b)}</mark>)
-    last = b
+  let i = 0
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i)
+    if (idx < 0) { parts.push(<span key={i}>{text.slice(i)}</span>); break }
+    if (idx > i) parts.push(<span key={i}>{text.slice(i, idx)}</span>)
+    parts.push(<mark key={idx} className="search-highlight">{text.slice(idx, idx + q.length)}</mark>)
+    i = idx + q.length
   }
-  if (last < title.length) parts.push(<span key={last}>{title.slice(last)}</span>)
   return <>{parts}</>
 }
 
 export default function CommandPalette({ sources, filesBySource, onOpen, onClose }) {
   const [query, setQuery] = useState('')
   const [activeIdx, setActiveIdx] = useState(0)
+  const [serverResults, setServerResults] = useState([])
+  const [pending, setPending] = useState(false)
   const inputRef = useRef(null)
   const listRef = useRef(null)
 
@@ -67,22 +50,47 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
     return items
   }, [sources, filesBySource])
 
+  // Debounced server-side content + title search.
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) { setServerResults([]); setPending(false); return }
+    setPending(true)
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const r = await window.api.github.search(q)
+        if (!cancelled) setServerResults(r || [])
+      } catch {
+        if (!cancelled) setServerResults([])
+      } finally {
+        if (!cancelled) setPending(false)
+      }
+    }, 200)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [query])
+
   const results = useMemo(() => {
     if (!query.trim()) {
-      return allFiles.slice(0, 50).map(item => ({ ...item, ranges: [] }))
+      return allFiles.slice(0, 50)
     }
-    return allFiles
-      .map(item => {
-        const title = item.file.name.replace(/\.(md|excalidraw)$/, '')
-        const m = fuzzyMatch(query, title)
-        return m.matched ? { ...item, score: m.score, ranges: m.ranges } : null
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.score - a.score)
+    // Map server results (which have path + name) back to (file, sourceId) pairs.
+    const sourceForPath = (p) => {
+      const src = sources.find(s => {
+        const folder = (s.folder || '').replace(/^\/|\/$/g, '')
+        return folder ? p.startsWith(folder + '/') : true
+      }) || sources[0]
+      return src
+    }
+    return serverResults
+      .filter(r => r.name.endsWith('.md') || r.name.endsWith('.excalidraw'))
       .slice(0, 50)
-  }, [query, allFiles])
+      .map(r => {
+        const src = sourceForPath(r.path)
+        return { file: r, sourceId: src?.id, sourceName: src?.name, snippet: r.snippet }
+      })
+  }, [query, allFiles, serverResults, sources])
 
-  useEffect(() => { setActiveIdx(0) }, [query])
+  useEffect(() => { setActiveIdx(0) }, [query, serverResults])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -131,7 +139,10 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
           <kbd className="cmd-palette-esc">Esc</kbd>
         </div>
         <div className="cmd-palette-results" ref={listRef}>
-          {results.length === 0 && (
+          {pending && results.length === 0 && (
+            <div className="cmd-palette-empty">Searching…</div>
+          )}
+          {!pending && results.length === 0 && (
             <div className="cmd-palette-empty">No notes match "{query}"</div>
           )}
           {results.map((item, i) => {
@@ -147,9 +158,16 @@ export default function CommandPalette({ sources, filesBySource, onOpen, onClose
                 onClick={() => onOpen(item.file, item.sourceId)}
               >
                 <span className="cmd-palette-item-icon">{fileIcon(item.file.name)}</span>
-                <span className="cmd-palette-item-title">
-                  <HighlightedTitle title={title} ranges={item.ranges} />
-                </span>
+                <div className="cmd-palette-item-main">
+                  <span className="cmd-palette-item-title">
+                    {highlightSubstring(title, query)}
+                  </span>
+                  {item.snippet && (
+                    <span className="cmd-palette-item-snippet">
+                      {highlightSubstring(item.snippet, query)}
+                    </span>
+                  )}
+                </div>
                 {sub && <span className="cmd-palette-item-sub">{sub}</span>}
               </div>
             )

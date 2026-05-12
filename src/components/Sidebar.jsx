@@ -76,16 +76,6 @@ function relativeTime(ts) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-function highlight(text, query) {
-  if (!query) return text
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
-  return parts.map((part, i) =>
-    part.toLowerCase() === query.toLowerCase()
-      ? <mark key={i} className="search-highlight">{part}</mark>
-      : part,
-  )
-}
-
 // ── Per-source section ──────────────────────────────────────────────────────
 function SourceSection({
   source,
@@ -280,10 +270,13 @@ function SourceSection({
             <div
               className="folder-item"
               style={{ paddingLeft: `${indent}px` }}
-              onClick={() => toggleFolder(node.key)}
+              onDoubleClick={() => toggleFolder(node.key)}
               onContextMenu={e => openContextMenu(e, 'folder', { key: node.key, name: node.name })}
             >
-              <span className="folder-arrow">{open ? '▾' : '▸'}</span>
+              <span
+                className="folder-arrow"
+                onClick={e => { e.stopPropagation(); toggleFolder(node.key) }}
+              >{open ? '▾' : '▸'}</span>
               <span className="folder-icon">
                 {open ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -370,14 +363,27 @@ function SourceSection({
               className="btn-icon"
               title={`Upload to ${source.name}`}
               onClick={e => { e.stopPropagation(); onUploadClick('') }}
-            >↑</button>
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </button>
             {isNotes ? (
               <div className="add-btn-group" onClick={e => e.stopPropagation()}>
                 <button
                   className="btn-icon"
                   title="New note (hover for more)"
                   onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
-                >+</button>
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
+                </button>
                 <div className="add-btn-menu">
                   <button className="add-btn-menu-item" onClick={() => { setNewFolderMode({ folder: '' }); setNewFileMode(null) }}>
                     New folder
@@ -393,12 +399,25 @@ function SourceSection({
                   className="btn-icon"
                   title="New folder"
                   onClick={e => { e.stopPropagation(); setNewFolderMode({ folder: '' }); setNewFileMode(null) }}
-                >+▦</button>
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    <line x1="12" y1="11" x2="12" y2="17"/>
+                    <line x1="9" y1="14" x2="15" y2="14"/>
+                  </svg>
+                </button>
                 <button
                   className="btn-icon"
                   title="New file"
                   onClick={e => { e.stopPropagation(); setNewFileMode({ folder: '' }); setNewFolderMode(null) }}
-                >+</button>
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
+                </button>
               </>
             )}
           </>
@@ -658,50 +677,6 @@ export default function Sidebar({
     })
   }
 
-  // ── Search across all cached files ─────────────────────────────────────────
-  const [searchMode, setSearchMode] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searchPending, setSearchPending] = useState(false)
-  const searchRef = useRef(null)
-
-  useEffect(() => { if (searchMode) searchRef.current?.focus() }, [searchMode])
-
-  useEffect(() => {
-    if (!searchMode || !searchQuery.trim()) { setSearchResults([]); return }
-    setSearchPending(true)
-    const timer = setTimeout(async () => {
-      const results = await window.api.github.search(searchQuery)
-      setSearchResults(results)
-      setSearchPending(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchQuery, searchMode])
-
-  function openSearch() {
-    setSearchMode(true)
-    // Focus on the next frame so competing effects (e.g. ProseMirror's default
-    // Ctrl+F handler that runs in the bubble phase) don't steal it back.
-    requestAnimationFrame(() => searchRef.current?.focus())
-  }
-  function closeSearch() { setSearchMode(false); setSearchQuery(''); setSearchResults([]) }
-
-  // Capture-phase listener — fires *before* ProseMirror sees the keydown, so
-  // we can stopPropagation and prevent the editor from moving the cursor or
-  // re-focusing itself when the user opens search.
-  useEffect(() => {
-    const onKey = e => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key === 'f') {
-        e.preventDefault()
-        e.stopPropagation()
-        openSearch()
-      }
-    }
-    window.addEventListener('keydown', onKey, { capture: true })
-    return () => window.removeEventListener('keydown', onKey, { capture: true })
-  }, [])
-
   // ── Per-section UI state ───────────────────────────────────────────────────
   const [perSection, setPerSection] = useState({}) // { [sourceId]: { newFileMode, newFolderMode, expandedFolders, activeCategories } }
 
@@ -817,66 +792,15 @@ export default function Sidebar({
       )}
       <aside className="sidebar" style={sidebarStyle}>
         <div className="sidebar-header">
-          {searchMode ? (
-            <input
-              ref={searchRef}
-              className="search-input"
-              type="text"
-              placeholder="Search…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Escape' && closeSearch()}
-              autoFocus
-            />
-          ) : (
-            <span className="brand">QNote</span>
-          )}
+          <span className="brand">QNote</span>
           <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
-            {!searchMode && (
-              <button className="btn-icon" onClick={openSearch} title="Search">⌕</button>
-            )}
-            {searchMode ? (
-              <button className="btn-icon" onClick={closeSearch} title="Close search">×</button>
-            ) : (
-              <button className="btn-icon" onClick={toggleCollapse} title="Collapse sidebar">‹</button>
-            )}
+            <button className="btn-icon" onClick={toggleCollapse} title="Collapse sidebar">‹</button>
           </div>
         </div>
 
         <div className="sidebar-scroll">
-          {searchMode ? (
-            <div className="file-list">
-              {searchQuery.trim() === '' ? (
-                <div className="hint">Type to search…</div>
-              ) : searchPending ? (
-                <div className="hint">Searching…</div>
-              ) : searchResults.length === 0 ? (
-                <div className="hint">No results</div>
-              ) : searchResults.map(r => {
-                // Find which source this result belongs to
-                const src = sources.find(s => {
-                  const folder = (s.folder || '').replace(/^\/|\/$/g, '')
-                  return folder ? r.path.startsWith(folder + '/') : true
-                }) || sources[0]
-                return (
-                  <div
-                    key={r.path}
-                    className={`search-result ${activeFile?.path === r.path ? 'active' : ''}`}
-                    onClick={() => { onFileSelect(r, src.id); closeSearch() }}
-                  >
-                    <div className="search-result-title">
-                      {highlight(r.name.replace(/\.md$/, ''), searchQuery)}
-                    </div>
-                    {r.snippet && (
-                      <div className="search-result-snippet">{highlight(r.snippet, searchQuery)}</div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <>
-              {loading && Object.keys(filesBySource).length === 0 && <div className="hint">Loading…</div>}
+          <>
+            {loading && Object.keys(filesBySource).length === 0 && <div className="hint">Loading…</div>}
               {sources.map(src => {
                 const sec = getSec(src.id)
                 return (
@@ -928,8 +852,7 @@ export default function Sidebar({
                   />
                 )
               })}
-            </>
-          )}
+          </>
         </div>
 
         <div className="sidebar-resize-handle" onMouseDown={startResize} />

@@ -688,7 +688,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
-      if (e.key === 't' || e.key === 'T') {
+      if (e.key === 't' || e.key === 'T' || e.key === 'f' || e.key === 'F') {
         e.preventDefault()
         setCmdPaletteOpen(v => !v)
       } else if (e.key === 's' || e.key === 'S') {
